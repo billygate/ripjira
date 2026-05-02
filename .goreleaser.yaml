@@ -45,17 +45,26 @@ changelog:
       - '^docs:'
       - '^test:'
 
-brews:
-  - repository:
+homebrew_casks:
+  - name: ripjira
+    binaries:
+      - ripjira
+    repository:
       owner: billygate
       name: homebrew-tap
       token: "{{ .Env.GORELEASER_GITHUB_TOKEN }}"
-    directory: Formula
+    directory: Casks
     homepage: "https://github.com/billygate/ripjira"
     description: "Jira CLI client with a TUI"
-    license: "PolyForm-Noncommercial-1.0.0"
-    test: |
-      system "#{bin}/ripjira --version"
-    install: |
-      bin.install "ripjira"
-      bin.install_symlink "ripjira" => "rj"
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr",
+              args: ["-dr", "com.apple.quarantine", "#{staged_path}/ripjira"]
+          end
+          system_command "/bin/ln",
+            args: ["-sf", "#{HOMEBREW_PREFIX}/bin/ripjira",
+                   "#{HOMEBREW_PREFIX}/bin/rj"]
+        uninstall: |
+          system_command "/bin/rm", args: ["-f", "#{HOMEBREW_PREFIX}/bin/rj"]
