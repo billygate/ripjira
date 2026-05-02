@@ -1,0 +1,72 @@
+{
+  "key": "PROJ-142",
+  "fields": {
+    "summary": "Fix login redirect on Safari",
+    "status": {
+      "id": "10001",
+      "name": "In Progress",
+      "statusCategory": {"key": "indeterminate", "name": "In Progress"}
+    },
+    "priority": {"id": "2", "name": "High"},
+    "issuetype": {"id": "10100", "name": "Task", "subtask": false},
+    "assignee": {
+      "accountId": "5b10ac8d82e05b22cc7d4ef5",
+      "displayName": "Sample User",
+      "emailAddress": "sample.user@example.com"
+    },
+    "reporter": {
+      "accountId": "5b10ac8d82e05b22cc7d4eaa",
+      "displayName": "Reporter Person",
+      "emailAddress": "reporter@example.com"
+    },
+    "updated": "2026-04-30T12:34:56.000+0000",
+    "comment": {
+      "comments": [
+        {
+          "id": "10500",
+          "author": {
+            "accountId": "5b10ac8d82e05b22cc7d4eaa",
+            "displayName": "Reporter Person",
+            "emailAddress": "reporter@example.com"
+          },
+          "created": "2026-04-30T13:00:00.000+0000"
+        }
+      ]
+    },
+    "subtasks": [
+      {
+        "key": "PROJ-200",
+        "fields": {
+          "summary": "Investigate Safari user agent",
+          "status": {
+            "id": "10001",
+            "name": "In Progress",
+            "statusCategory": {"key": "indeterminate", "name": "In Progress"}
+          }
+        }
+      },
+      {
+        "key": "PROJ-201",
+        "fields": {
+          "summary": "Patch redirect logic",
+          "status": {
+            "id": "10000",
+            "name": "To Do",
+            "statusCategory": {"key": "new", "name": "To Do"}
+          }
+        }
+      }
+    ]
+  },
+  "renderedFields": {
+    "description": "<p>When user logs in via Safari 17,<br/>the redirect to /dashboard fails.</p><p>Steps to reproduce: open &amp; close.</p>",
+    "comment": {
+      "comments": [
+        {
+          "id": "10500",
+          "body": "<p>I see the same issue.</p>"
+        }
+      ]
+    }
+  }
+}

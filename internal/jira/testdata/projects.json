@@ -1,0 +1,21 @@
+{
+  "self": "https://acme.atlassian.net/rest/api/3/project/search?startAt=0&maxResults=50",
+  "maxResults": 50,
+  "startAt": 0,
+  "total": 2,
+  "isLast": true,
+  "values": [
+    {
+      "id": "10000",
+      "key": "PROJ",
+      "name": "Sample Project",
+      "projectTypeKey": "software"
+    },
+    {
+      "id": "10001",
+      "key": "ACME",
+      "name": "Acme Corp",
+      "projectTypeKey": "software"
+    }
+  ]
+}

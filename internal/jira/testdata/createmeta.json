@@ -1,0 +1,74 @@
+{
+  "maxResults": 50,
+  "startAt": 0,
+  "total": 7,
+  "isLast": true,
+  "fields": [
+    {
+      "fieldId": "summary",
+      "name": "Summary",
+      "required": true,
+      "schema": {"type": "string", "system": "summary"},
+      "hasDefaultValue": false,
+      "operations": ["set"]
+    },
+    {
+      "fieldId": "description",
+      "name": "Description",
+      "required": false,
+      "schema": {"type": "string", "system": "description"},
+      "hasDefaultValue": false,
+      "operations": ["set"]
+    },
+    {
+      "fieldId": "priority",
+      "name": "Priority",
+      "required": false,
+      "schema": {"type": "priority", "system": "priority"},
+      "hasDefaultValue": true,
+      "operations": ["set"],
+      "allowedValues": [
+        {"id": "1", "name": "Highest", "iconUrl": "x"},
+        {"id": "2", "name": "High"},
+        {"id": "3", "name": "Medium"}
+      ]
+    },
+    {
+      "fieldId": "issuetype",
+      "name": "Issue Type",
+      "required": true,
+      "schema": {"type": "issuetype", "system": "issuetype"},
+      "operations": [],
+      "allowedValues": [
+        {"id": "10100", "name": "Task", "subtask": false},
+        {"id": "10101", "name": "Bug", "subtask": false}
+      ]
+    },
+    {
+      "fieldId": "assignee",
+      "name": "Assignee",
+      "required": false,
+      "schema": {"type": "user", "system": "assignee"},
+      "operations": ["set"]
+    },
+    {
+      "fieldId": "labels",
+      "name": "Labels",
+      "required": false,
+      "schema": {"type": "array", "items": "string", "system": "labels"},
+      "operations": ["add", "set", "remove"]
+    },
+    {
+      "fieldId": "customfield_10010",
+      "name": "Sprint Color",
+      "required": false,
+      "schema": {"type": "option", "custom": "com.example:select"},
+      "operations": ["set"],
+      "allowedValues": [
+        {"id": "10300", "value": "Red"},
+        {"id": "10301", "value": "Green"},
+        {"id": "10302", "value": "Blue"}
+      ]
+    }
+  ]
+}

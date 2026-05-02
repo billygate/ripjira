@@ -1,0 +1,7 @@
+base_url: https://acme.atlassian.net
+email: dev@example.com
+default_project: PROJ
+default_grouping: priority
+auto_refresh_seconds: 60
+theme: catppuccin
+icons: ascii

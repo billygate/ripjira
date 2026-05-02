@@ -1,0 +1,3 @@
+base_url: https://acme.atlassian.net
+email: dev@example.com
+default_grouping: epic

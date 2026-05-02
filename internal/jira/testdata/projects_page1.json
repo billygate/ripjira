@@ -1,0 +1,11 @@
+{
+  "self": "https://acme.atlassian.net/rest/api/3/project/search?startAt=0&maxResults=50",
+  "maxResults": 50,
+  "startAt": 0,
+  "total": 3,
+  "isLast": false,
+  "values": [
+    {"id": "10000", "key": "AAA", "name": "Project A"},
+    {"id": "10001", "key": "BBB", "name": "Project B"}
+  ]
+}

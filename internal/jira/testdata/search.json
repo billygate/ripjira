@@ -1,0 +1,44 @@
+{
+  "issues": [
+    {
+      "key": "PROJ-142",
+      "fields": {
+        "summary": "Fix login redirect on Safari",
+        "status": {
+          "id": "10001",
+          "name": "In Progress",
+          "statusCategory": {"key": "indeterminate", "name": "In Progress"}
+        },
+        "priority": {"id": "2", "name": "High"},
+        "issuetype": {"id": "10100", "name": "Task", "subtask": false},
+        "assignee": {
+          "accountId": "5b10ac8d82e05b22cc7d4ef5",
+          "displayName": "Sample User",
+          "emailAddress": "sample.user@example.com"
+        },
+        "reporter": {
+          "accountId": "5b10ac8d82e05b22cc7d4eaa",
+          "displayName": "Reporter Person",
+          "emailAddress": "reporter@example.com"
+        },
+        "updated": "2026-04-30T12:34:56.000+0000"
+      }
+    },
+    {
+      "key": "PROJ-118",
+      "fields": {
+        "summary": "Refactor auth middleware",
+        "status": {
+          "id": "10000",
+          "name": "To Do",
+          "statusCategory": {"key": "new", "name": "To Do"}
+        },
+        "priority": null,
+        "issuetype": {"id": "10101", "name": "Bug", "subtask": false},
+        "assignee": null,
+        "reporter": null,
+        "updated": "2026-04-29T09:00:00.000+0000"
+      }
+    }
+  ]
+}
