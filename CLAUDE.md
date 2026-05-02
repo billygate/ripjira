@@ -132,3 +132,12 @@ their content is in git history and the code itself. Same goes for
 any personal data (real emails, names tied to internal companies,
 absolute home-directory paths) in test fixtures or docs: scrub
 before tagging.
+
+## Commit messages
+
+Keep commit messages plain and human. One short subject line that
+says what changed; a body only when the *why* isn't obvious from
+the diff. Conventional-commits prefixes (`feat:`, `fix:`, `docs:`,
+`test:`, `chore:`) are fine but not required. Do **not** append
+`Co-Authored-By:` trailers (Claude or anyone else) — author is
+whoever ran `git commit`.

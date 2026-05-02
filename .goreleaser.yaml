@@ -53,8 +53,9 @@ brews:
     directory: Formula
     homepage: "https://github.com/billygate/ripjira"
     description: "Jira CLI client with a TUI"
-    license: "MIT"
+    license: "PolyForm-Noncommercial-1.0.0"
     test: |
       system "#{bin}/ripjira --version"
     install: |
       bin.install "ripjira"
+      bin.install_symlink "ripjira" => "rj"

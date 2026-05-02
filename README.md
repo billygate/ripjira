@@ -30,6 +30,17 @@ leaving your terminal.
 
 ## Install
 
+### Homebrew
+
+```sh
+brew tap billygate/tap
+brew install ripjira
+```
+
+This installs both `ripjira` and the short alias `rj`.
+
+### From source
+
 Requires Go 1.26 or newer.
 
 ```sh
@@ -164,4 +175,6 @@ The architecture is documented at
 
 ## License
 
-MIT.
+[PolyForm Noncommercial 1.0.0](LICENSE) — free for personal,
+research, educational, and noncommercial use. Commercial use
+requires a separate license; open an issue to discuss.
