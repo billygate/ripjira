@@ -28,9 +28,21 @@ type Keymap struct {
 	New                key.Binding
 	NewSubtask         key.Binding
 	Browser            key.Binding
+	CopyKey            key.Binding
+	CopyURL            key.Binding
 	Refresh            key.Binding
 	OpenSearch         key.Binding
+	OpenFilter         key.Binding
+	OpenFavorites      key.Binding
 	OpenOptions        key.Binding
+	EditSummary        key.Binding
+	EditPriority       key.Binding
+	EditLabels         key.Binding
+	EditDueDate        key.Binding
+	AddLink            key.Binding
+	Watch              key.Binding
+	Unwatch            key.Binding
+	LogWork            key.Binding
 	Help               key.Binding
 	CloseOverlay       key.Binding
 	Quit               key.Binding
@@ -111,6 +123,14 @@ func DefaultKeymap() Keymap {
 			key.WithKeys("o"),
 			key.WithHelp("o", "browser"),
 		),
+		CopyKey: key.NewBinding(
+			key.WithKeys("y"),
+			key.WithHelp("y", "copy key"),
+		),
+		CopyURL: key.NewBinding(
+			key.WithKeys("Y"),
+			key.WithHelp("Y", "copy URL"),
+		),
 		Refresh: key.NewBinding(
 			key.WithKeys("r"),
 			key.WithHelp("r", "refresh"),
@@ -119,9 +139,49 @@ func DefaultKeymap() Keymap {
 			key.WithKeys("/"),
 			key.WithHelp("/", "search"),
 		),
+		OpenFilter: key.NewBinding(
+			key.WithKeys("f"),
+			key.WithHelp("f", "filter"),
+		),
+		OpenFavorites: key.NewBinding(
+			key.WithKeys("*"),
+			key.WithHelp("*", "favorites"),
+		),
 		OpenOptions: key.NewBinding(
 			key.WithKeys(","),
 			key.WithHelp(",", "options"),
+		),
+		EditSummary: key.NewBinding(
+			key.WithKeys("T"),
+			key.WithHelp("T", "edit title"),
+		),
+		EditPriority: key.NewBinding(
+			key.WithKeys("P"),
+			key.WithHelp("P", "edit priority"),
+		),
+		EditLabels: key.NewBinding(
+			key.WithKeys("L"),
+			key.WithHelp("L", "edit labels"),
+		),
+		EditDueDate: key.NewBinding(
+			key.WithKeys("D"),
+			key.WithHelp("D", "edit due date"),
+		),
+		AddLink: key.NewBinding(
+			key.WithKeys("+"),
+			key.WithHelp("+", "add link"),
+		),
+		Watch: key.NewBinding(
+			key.WithKeys("w"),
+			key.WithHelp("w", "watch"),
+		),
+		Unwatch: key.NewBinding(
+			key.WithKeys("W"),
+			key.WithHelp("W", "unwatch"),
+		),
+		LogWork: key.NewBinding(
+			key.WithKeys("t"),
+			key.WithHelp("t", "log time"),
 		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),

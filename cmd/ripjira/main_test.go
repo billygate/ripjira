@@ -251,3 +251,73 @@ func TestRun_SkipsWizardWhenConfigValid(t *testing.T) {
 		t.Fatalf("exit %d, stderr=%q", code, errw.String())
 	}
 }
+
+func TestRunWithRestart_RecoversFromPanic(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("RIPJIRA_NO_RESTART", "")
+
+	prev := runTUIFn
+	t.Cleanup(func() { runTUIFn = prev })
+
+	var calls int
+	runTUIFn = func(*config.Config, *jira.Client, io.Writer, io.Writer) error {
+		calls++
+		if calls == 1 {
+			panic("boom")
+		}
+		return nil
+	}
+
+	var errw bytes.Buffer
+	if err := runWithRestart(&config.Config{}, nil, io.Discard, &errw); err != nil {
+		t.Fatalf("runWithRestart returned %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("runTUIFn called %d times, want 2", calls)
+	}
+	if !strings.Contains(errw.String(), "panic: boom") {
+		t.Fatalf("stderr missing panic line: %q", errw.String())
+	}
+}
+
+func TestRunWithRestart_GivesUpAfterMaxRestarts(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("RIPJIRA_NO_RESTART", "")
+
+	prev := runTUIFn
+	t.Cleanup(func() { runTUIFn = prev })
+
+	var calls int
+	runTUIFn = func(*config.Config, *jira.Client, io.Writer, io.Writer) error {
+		calls++
+		panic("always boom")
+	}
+
+	err := runWithRestart(&config.Config{}, nil, io.Discard, io.Discard)
+	if err == nil {
+		t.Fatal("expected error after exceeding max restarts")
+	}
+	if calls != maxRestarts+1 {
+		t.Fatalf("runTUIFn called %d times, want %d", calls, maxRestarts+1)
+	}
+}
+
+func TestRunWithRestart_DisabledByEnv(t *testing.T) {
+	t.Setenv("RIPJIRA_NO_RESTART", "1")
+
+	prev := runTUIFn
+	t.Cleanup(func() { runTUIFn = prev })
+
+	var calls int
+	runTUIFn = func(*config.Config, *jira.Client, io.Writer, io.Writer) error {
+		calls++
+		return nil
+	}
+
+	if err := runWithRestart(&config.Config{}, nil, io.Discard, io.Discard); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+}

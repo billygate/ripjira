@@ -50,8 +50,15 @@ func (l *refreshLoader) AddComment(_ context.Context, _, _ string) error   { ret
 func (l *refreshLoader) SearchUsers(_ context.Context, _ string) ([]jira.User, error) {
 	return nil, nil
 }
-func (l *refreshLoader) AssignIssue(_ context.Context, _, _ string) error   { return nil }
-func (l *refreshLoader) GetMyself(_ context.Context) (jira.User, error)     { return jira.User{}, nil }
+func (l *refreshLoader) AssignIssue(_ context.Context, _, _ string) error { return nil }
+func (l *refreshLoader) UpdateFields(_ context.Context, _ string, _ map[string]any) error {
+	return nil
+}
+func (l *refreshLoader) CreateLink(_ context.Context, _, _, _ string) error      { return nil }
+func (l *refreshLoader) AddWatcher(_ context.Context, _, _ string) error          { return nil }
+func (l *refreshLoader) RemoveWatcher(_ context.Context, _, _ string) error       { return nil }
+func (l *refreshLoader) AddWorklog(_ context.Context, _, _, _ string) error       { return nil }
+func (l *refreshLoader) GetMyself(_ context.Context) (jira.User, error) { return jira.User{}, nil }
 func (l *refreshLoader) Projects(_ context.Context) ([]jira.Project, error) { return nil, nil }
 func (l *refreshLoader) IssueTypesForProject(_ context.Context, _ string) ([]jira.IssueType, error) {
 	return nil, nil

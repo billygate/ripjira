@@ -54,13 +54,14 @@ func TestDo_AuthHeaderAndJSONRoundTrip(t *testing.T) {
 	type echo struct {
 		Hello string `json:"hello"`
 	}
-	var gotAuth, gotMethod, gotPath, gotCT, gotAccept string
+	var gotAuth, gotMethod, gotPath, gotCT, gotAccept, gotUA string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		gotMethod = r.Method
 		gotPath = r.URL.Path
 		gotCT = r.Header.Get("Content-Type")
 		gotAccept = r.Header.Get("Accept")
+		gotUA = r.Header.Get("User-Agent")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"hello":"world"}`))
 	}))
@@ -85,6 +86,9 @@ func TestDo_AuthHeaderAndJSONRoundTrip(t *testing.T) {
 	}
 	if gotAccept != "application/json" {
 		t.Fatalf("Accept: got %q", gotAccept)
+	}
+	if !strings.HasPrefix(gotUA, "ripjira/") || !strings.Contains(gotUA, "+https://github.com/billygate/ripjira") {
+		t.Fatalf("User-Agent: got %q, want ripjira/... with project URL", gotUA)
 	}
 	if out.Hello != "world" {
 		t.Fatalf("decoded body: got %+v", out)

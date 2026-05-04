@@ -316,6 +316,44 @@ func TestList_SearchEscEmptyEmitsCancelled(t *testing.T) {
 	}
 }
 
+func TestList_LocalFilterNarrowsRows(t *testing.T) {
+	l := newList(t)
+	l.SetIssues(sampleIssues())
+	l.BeginLocalFilter()
+	// Type "auth" — should match only PROJ-2 (Refactor auth middleware).
+	l, _ = l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("auth")})
+	if l.LocalFilter() != "auth" {
+		t.Fatalf("LocalFilter = %q", l.LocalFilter())
+	}
+	groups := l.Groups()
+	count := 0
+	for _, g := range groups {
+		count += len(g.Issues)
+	}
+	if count != 1 {
+		t.Fatalf("filtered issues = %d, want 1", count)
+	}
+	// Esc clears.
+	l, _ = l.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if l.LocalFilter() != "" {
+		t.Fatalf("LocalFilter not cleared: %q", l.LocalFilter())
+	}
+}
+
+func TestList_LocalFilterCaseInsensitive(t *testing.T) {
+	l := newList(t)
+	l.SetIssues(sampleIssues())
+	l.BeginLocalFilter()
+	l, _ = l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("SAFARI")})
+	count := 0
+	for _, g := range l.Groups() {
+		count += len(g.Issues)
+	}
+	if count != 1 {
+		t.Fatalf("case-insensitive match count = %d, want 1", count)
+	}
+}
+
 func TestList_SearchCollapsedShowsQuery(t *testing.T) {
 	l := newList(t)
 	l.SetSearchCollapsed("hello")

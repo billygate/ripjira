@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -48,6 +49,18 @@ const MaxRetries = 2
 
 // EnvDebug toggles debug logging when set to "1".
 const EnvDebug = "RIPJIRA_DEBUG"
+
+// Version identifies the ripjira build sent in the User-Agent header.
+// cmd/ripjira overrides this at startup with the binary's version string.
+var Version = "dev"
+
+// UserAgent returns the value sent in the User-Agent header on every Jira
+// request. It identifies the client to Atlassian and to any reverse proxy
+// in the path so administrators can attribute traffic.
+func UserAgent() string {
+	return fmt.Sprintf("ripjira/%s (%s/%s; +https://github.com/billygate/ripjira)",
+		Version, runtime.GOOS, runtime.GOARCH)
+}
 
 // HTTPError is returned when Jira responds with a non-2xx status that is not
 // retried (typically 4xx). It exposes the status code and raw body for
@@ -182,6 +195,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		}
 		req.Header.Set("Authorization", c.authHeader)
 		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", UserAgent())
 		if raw != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}

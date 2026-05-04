@@ -95,6 +95,13 @@ type List struct {
 	searchQuery string
 	input       textinput.Model
 
+	// localFilter narrows the visible rows by case-insensitive substring
+	// match on `KEY summary` without hitting the network. localFilterEditing
+	// distinguishes "actively typing the filter" from "filter is applied
+	// and the input is blurred".
+	localFilter        string
+	localFilterEditing bool
+
 	pendingDigit int
 	pendingGen   int
 }
@@ -174,6 +181,58 @@ func (m *List) UpdateIssueStatus(key string, status jira.Status) bool {
 	for i := range m.issues {
 		if m.issues[i].Key == key {
 			m.issues[i].Status = status
+			m.rebuild()
+			return true
+		}
+	}
+	return false
+}
+
+// UpdateIssueSummary replaces the Summary of the issue with the given key
+// and rebuilds the view. Returns true when the key was found.
+func (m *List) UpdateIssueSummary(key, summary string) bool {
+	for i := range m.issues {
+		if m.issues[i].Key == key {
+			m.issues[i].Summary = summary
+			m.rebuild()
+			return true
+		}
+	}
+	return false
+}
+
+// UpdateIssuePriority replaces the Priority of the issue with the given key
+// and rebuilds the view. Returns true when the key was found.
+func (m *List) UpdateIssuePriority(key string, priority jira.Priority) bool {
+	for i := range m.issues {
+		if m.issues[i].Key == key {
+			m.issues[i].Priority = priority
+			m.rebuild()
+			return true
+		}
+	}
+	return false
+}
+
+// UpdateIssueLabels replaces the Labels slice of the issue with the given
+// key and rebuilds the view. Returns true when the key was found.
+func (m *List) UpdateIssueLabels(key string, labels []string) bool {
+	for i := range m.issues {
+		if m.issues[i].Key == key {
+			m.issues[i].Labels = append([]string(nil), labels...)
+			m.rebuild()
+			return true
+		}
+	}
+	return false
+}
+
+// UpdateIssueDueDate replaces the DueDate of the issue with the given key
+// and rebuilds the view. Returns true when the key was found.
+func (m *List) UpdateIssueDueDate(key, dueDate string) bool {
+	for i := range m.issues {
+		if m.issues[i].Key == key {
+			m.issues[i].DueDate = dueDate
 			m.rebuild()
 			return true
 		}
@@ -272,6 +331,36 @@ func (m *List) SetSearchEditing(prefill string) {
 	m.list.SetHeight(maxInt(0, m.height-1))
 }
 
+// LocalFilter returns the active local-filter string ("" when not filtering).
+func (m List) LocalFilter() string { return m.localFilter }
+
+// LocalFilterEditing reports whether the user is currently typing into the
+// local-filter input.
+func (m List) LocalFilterEditing() bool { return m.localFilterEditing }
+
+// BeginLocalFilter focuses the textinput in local-filter mode. While the
+// user types, every keystroke updates the filter and re-renders. Esc clears
+// the filter; Enter commits it (input blurs, filter remains applied).
+func (m *List) BeginLocalFilter() {
+	m.input = textinput.New()
+	m.input.Placeholder = "filter by key or summary · Esc to clear"
+	m.input.Prompt = "▽ "
+	m.input.SetValue(m.localFilter)
+	m.input.CursorEnd()
+	m.input.Focus()
+	m.localFilterEditing = true
+	m.list.SetHeight(maxInt(0, m.height-1))
+}
+
+// ClearLocalFilter drops the filter and exits the editing mode.
+func (m *List) ClearLocalFilter() {
+	m.localFilter = ""
+	m.localFilterEditing = false
+	m.input.Blur()
+	m.list.SetHeight(m.height)
+	m.rebuild()
+}
+
 // SetSearchCollapsed shows the 🔍 query header above the results.
 func (m *List) SetSearchCollapsed(query string) {
 	m.searchState = searchCollapsed
@@ -342,6 +431,25 @@ func (m List) Update(msg tea.Msg) (List, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
+		if m.localFilterEditing {
+			switch msg.Type {
+			case tea.KeyEnter:
+				m.localFilterEditing = false
+				m.input.Blur()
+				m.list.SetHeight(m.height)
+				return m, nil
+			case tea.KeyEsc:
+				m.ClearLocalFilter()
+				return m, nil
+			case tea.KeyTab, tea.KeyShiftTab:
+				return m, nil
+			}
+			var cmd tea.Cmd
+			m.input, cmd = m.input.Update(msg)
+			m.localFilter = m.input.Value()
+			m.rebuild()
+			return m, cmd
+		}
 		if m.searchState == searchEditing {
 			switch msg.Type {
 			case tea.KeyEnter:
@@ -413,8 +521,18 @@ func (m List) Update(msg tea.Msg) (List, tea.Cmd) {
 	return m, cmd
 }
 
-// View renders the list, optionally prefixed with a search header.
+// View renders the list, optionally prefixed with a search or filter
+// header. The local filter takes precedence — search and filter cannot be
+// active simultaneously, but if both states are set the in-progress filter
+// is what the user is interacting with.
 func (m List) View() string {
+	if m.localFilterEditing {
+		return lipgloss.JoinVertical(lipgloss.Left, m.input.View(), m.list.View())
+	}
+	if m.localFilter != "" {
+		header := m.styles.GroupHeader.Render("▽ " + m.localFilter)
+		return lipgloss.JoinVertical(lipgloss.Left, header, m.list.View())
+	}
 	switch m.searchState {
 	case searchEditing:
 		return lipgloss.JoinVertical(lipgloss.Left, m.input.View(), m.list.View())
@@ -455,7 +573,18 @@ func (m *List) rebuild() {
 		}
 	}
 
-	m.groups = m.strategy.Group(m.issues)
+	src := m.issues
+	if m.localFilter != "" {
+		needle := strings.ToLower(m.localFilter)
+		src = make([]jira.Issue, 0, len(m.issues))
+		for i := range m.issues {
+			hay := strings.ToLower(m.issues[i].Key + " " + m.issues[i].Summary)
+			if strings.Contains(hay, needle) {
+				src = append(src, m.issues[i])
+			}
+		}
+	}
+	m.groups = m.strategy.Group(src)
 	grouping.ApplySort(m.groups, m.sort, m.sortDesc)
 	visibleIssues := 0
 	for _, g := range m.groups {

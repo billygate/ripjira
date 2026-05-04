@@ -17,6 +17,11 @@ type AppLoader interface {
 	AddComment(ctx context.Context, key, body string) error
 	SearchUsers(ctx context.Context, query string) ([]jira.User, error)
 	AssignIssue(ctx context.Context, key, accountID string) error
+	UpdateFields(ctx context.Context, key string, fields map[string]any) error
+	CreateLink(ctx context.Context, typeName, inwardKey, outwardKey string) error
+	AddWatcher(ctx context.Context, key, accountID string) error
+	RemoveWatcher(ctx context.Context, key, accountID string) error
+	AddWorklog(ctx context.Context, key, timeSpent, comment string) error
 	GetMyself(ctx context.Context) (jira.User, error)
 	Projects(ctx context.Context) ([]jira.Project, error)
 	IssueTypesForProject(ctx context.Context, projectKey string) ([]jira.IssueType, error)
@@ -31,6 +36,7 @@ type AppLoader interface {
 type jiraClient interface {
 	MyIssues(ctx context.Context) ([]jira.Issue, error)
 	WatchingIssues(ctx context.Context) ([]jira.Issue, error)
+	ReportedIssues(ctx context.Context) ([]jira.Issue, error)
 	Search(ctx context.Context, jql string) ([]jira.Issue, error)
 	GetIssue(ctx context.Context, key string) (jira.Issue, error)
 	GetTransitions(ctx context.Context, key string) ([]jira.Transition, error)
@@ -39,6 +45,11 @@ type jiraClient interface {
 	AddComment(ctx context.Context, key, body string) error
 	SearchUsers(ctx context.Context, query string) ([]jira.User, error)
 	AssignIssue(ctx context.Context, key, accountID string) error
+	UpdateIssue(ctx context.Context, key string, fields map[string]any) error
+	CreateIssueLink(ctx context.Context, typeName, inwardKey, outwardKey string) error
+	AddWatcher(ctx context.Context, key, accountID string) error
+	RemoveWatcher(ctx context.Context, key, accountID string) error
+	AddWorklog(ctx context.Context, key, timeSpent, comment string) error
 	Myself(ctx context.Context) (jira.User, error)
 	Projects(ctx context.Context) ([]jira.Project, error)
 	IssueTypesForProject(ctx context.Context, projectKey string) ([]jira.IssueType, error)
@@ -60,6 +71,15 @@ func (l *clientLoader) LoadIssues(ctx context.Context, view panes.ViewKind, quer
 	switch view {
 	case panes.ViewWatching:
 		return l.c.WatchingIssues(ctx)
+	case panes.ViewReported:
+		return l.c.ReportedIssues(ctx)
+	case panes.ViewRecent:
+		// Empty query means "no recently-viewed issues yet" — return an
+		// empty result without burning a Jira request.
+		if strings.TrimSpace(query) == "" {
+			return nil, nil
+		}
+		return l.c.Search(ctx, query)
 	case panes.ViewSearch:
 		return l.c.Search(ctx, wrapSearchQuery(query))
 	default:
@@ -120,6 +140,26 @@ func (l *clientLoader) SearchUsers(ctx context.Context, query string) ([]jira.Us
 
 func (l *clientLoader) AssignIssue(ctx context.Context, key, accountID string) error {
 	return l.c.AssignIssue(ctx, key, accountID)
+}
+
+func (l *clientLoader) UpdateFields(ctx context.Context, key string, fields map[string]any) error {
+	return l.c.UpdateIssue(ctx, key, fields)
+}
+
+func (l *clientLoader) CreateLink(ctx context.Context, typeName, inwardKey, outwardKey string) error {
+	return l.c.CreateIssueLink(ctx, typeName, inwardKey, outwardKey)
+}
+
+func (l *clientLoader) AddWatcher(ctx context.Context, key, accountID string) error {
+	return l.c.AddWatcher(ctx, key, accountID)
+}
+
+func (l *clientLoader) RemoveWatcher(ctx context.Context, key, accountID string) error {
+	return l.c.RemoveWatcher(ctx, key, accountID)
+}
+
+func (l *clientLoader) AddWorklog(ctx context.Context, key, timeSpent, comment string) error {
+	return l.c.AddWorklog(ctx, key, timeSpent, comment)
 }
 
 func (l *clientLoader) GetMyself(ctx context.Context) (jira.User, error) {
