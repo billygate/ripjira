@@ -31,8 +31,7 @@ func TestOptionsGroupings_IncludesParent(t *testing.T) {
 	want := map[string]string{
 		"status":   "Status",
 		"priority": "Priority",
-		"epic":     "Epic",
-		"parent":   "Parent (epic)",
+		"parent":   "Epic",
 	}
 	got := map[string]string{}
 	for _, g := range optionsGroupings {

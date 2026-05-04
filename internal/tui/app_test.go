@@ -708,10 +708,15 @@ func TestCache_OnlyMyTasksWritesToDisk(t *testing.T) {
 	}
 }
 
-func TestStrategy_DefaultIsEpicAndPriorityForMyTasks(t *testing.T) {
+func TestStrategy_DefaultIsParentForMyTasks(t *testing.T) {
 	m := newTestModel(t)
-	if got := m.list.Strategy().Name(); got != "epic" {
-		t.Errorf("startup strategy = %q, want %q", got, "epic")
+	mi, _ := m.handleViewSelected(panes.ViewMyTasks)
+	// view stays the same on no-op call; force a switch to invalidate cache.
+	mi, _ = mi.(Model).handleViewSelected(panes.ViewWatching)
+	mi, _ = mi.(Model).handleViewSelected(panes.ViewMyTasks)
+	m = mi.(Model)
+	if got := m.list.Strategy().Name(); got != "parent" {
+		t.Errorf("MyTasks strategy = %q, want %q", got, "parent")
 	}
 }
 
@@ -731,8 +736,8 @@ func TestStrategy_ReappliedOnReturnToMyTasks(t *testing.T) {
 	// Return to MyTasks → epic strategy is re-applied.
 	mi, _ = m.handleViewSelected(panes.ViewMyTasks)
 	m = mi.(Model)
-	if got := m.list.Strategy().Name(); got != "epic" {
-		t.Errorf("on return to MyTasks strategy = %q, want %q", got, "epic")
+	if got := m.list.Strategy().Name(); got != "parent" {
+		t.Errorf("on return to MyTasks strategy = %q, want %q", got, "parent")
 	}
 }
 
