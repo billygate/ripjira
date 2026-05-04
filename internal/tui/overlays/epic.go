@@ -143,18 +143,21 @@ func (e Epic) Update(msg tea.Msg) (Epic, tea.Cmd) {
 		}
 		return e, nil
 	case tea.KeyRunes:
-		s := k.String()
-		if s == "j" {
-			if e.cursor < e.rowCount()-1 {
-				e.cursor++
+		// j/k navigate only when the filter is empty; otherwise they are
+		// regular input characters (epic summaries routinely contain them).
+		if e.filter == "" && len(k.Runes) == 1 {
+			switch k.Runes[0] {
+			case 'j':
+				if e.cursor < e.rowCount()-1 {
+					e.cursor++
+				}
+				return e, nil
+			case 'k':
+				if e.cursor > 0 {
+					e.cursor--
+				}
+				return e, nil
 			}
-			return e, nil
-		}
-		if s == "k" {
-			if e.cursor > 0 {
-				e.cursor--
-			}
-			return e, nil
 		}
 		e.filter += string(k.Runes)
 		e.cursor = 0
