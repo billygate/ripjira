@@ -63,9 +63,16 @@ type listItem struct {
 	Collapsed bool
 	Number    int
 	NumWidth  int
+
+	// Section is true for section header rows (Structures view). Issues and
+	// groups within the section follow until the next section header.
+	Section         bool
+	SectionTitle    string
+	SectionReadOnly bool
 }
 
-func (l listItem) isGroup() bool { return l.Issue == nil }
+func (l listItem) isSection() bool { return l.Section }
+func (l listItem) isGroup() bool   { return !l.Section && l.Issue == nil }
 
 // FilterValue implements list.Item for fuzzy filtering. Group rows match by
 // their key; issue rows match by `KEY summary`.
@@ -104,6 +111,23 @@ type List struct {
 
 	pendingDigit int
 	pendingGen   int
+
+	sections []Section
+}
+
+// Section is one block in the sectioned-list render mode. When SetSections is
+// called with a non-empty slice the list renders section headers above the
+// grouped rows; passing nil reverts to flat grouping.
+type Section struct {
+	Title    string
+	ReadOnly bool
+	Issues   []jira.Issue
+}
+
+// SetSections enables sectioned mode. Pass nil (or empty) to revert.
+func (m *List) SetSections(sections []Section) {
+	m.sections = sections
+	m.rebuild()
 }
 
 // New constructs an empty List bound to the given styles and strategy.
@@ -578,6 +602,23 @@ func maxInt(a, b int) int {
 
 // rebuild projects the current []issues + strategy + collapse map into the
 // flat list of bubbles/list items.
+// applyLocalFilter returns issues filtered by the case-insensitive substring
+// in m.localFilter, or the input slice unchanged when the filter is empty.
+func (m *List) applyLocalFilter(in []jira.Issue) []jira.Issue {
+	if m.localFilter == "" {
+		return in
+	}
+	needle := strings.ToLower(m.localFilter)
+	out := make([]jira.Issue, 0, len(in))
+	for i := range in {
+		hay := strings.ToLower(in[i].Key + " " + in[i].Summary)
+		if strings.Contains(hay, needle) {
+			out = append(out, in[i])
+		}
+	}
+	return out
+}
+
 func (m *List) rebuild() {
 	prevSelKey, prevSelGroup := "", ""
 	if it, ok := m.list.SelectedItem().(listItem); ok {
@@ -588,48 +629,70 @@ func (m *List) rebuild() {
 		}
 	}
 
-	src := m.issues
-	if m.localFilter != "" {
-		needle := strings.ToLower(m.localFilter)
-		src = make([]jira.Issue, 0, len(m.issues))
-		for i := range m.issues {
-			hay := strings.ToLower(m.issues[i].Key + " " + m.issues[i].Summary)
-			if strings.Contains(hay, needle) {
-				src = append(src, m.issues[i])
+	items := []list.Item{}
+	num := 0
+	if len(m.sections) > 0 {
+		// Sectioned mode: emit a section header, then run grouping over each
+		// section's issues. Numbering continues across sections.
+		var sectionGroups []grouping.Group
+		for _, sec := range m.sections {
+			items = append(items, listItem{
+				Section:         true,
+				SectionTitle:    sec.Title,
+				SectionReadOnly: sec.ReadOnly,
+				Count:           len(sec.Issues),
+			})
+			groups := m.strategy.Group(m.applyLocalFilter(sec.Issues))
+			grouping.ApplySort(groups, m.sort, m.sortDesc)
+			sectionGroups = append(sectionGroups, groups...)
+			for _, g := range groups {
+				collapsed := m.collapsed[g.Key]
+				items = append(items, listItem{GroupKey: g.Key, Count: len(g.Issues), Collapsed: collapsed})
+				if collapsed {
+					continue
+				}
+				for i := range g.Issues {
+					is := g.Issues[i]
+					num++
+					items = append(items, listItem{Issue: &is, Number: num, NumWidth: 2})
+				}
 			}
 		}
-	}
-	m.groups = m.strategy.Group(src)
-	grouping.ApplySort(m.groups, m.sort, m.sortDesc)
-	visibleIssues := 0
-	for _, g := range m.groups {
-		if !m.collapsed[g.Key] {
-			visibleIssues += len(g.Issues)
+		m.groups = sectionGroups
+		m.list.SetItems(items)
+	} else {
+		src := m.applyLocalFilter(m.issues)
+		m.groups = m.strategy.Group(src)
+		grouping.ApplySort(m.groups, m.sort, m.sortDesc)
+		visibleIssues := 0
+		for _, g := range m.groups {
+			if !m.collapsed[g.Key] {
+				visibleIssues += len(g.Issues)
+			}
 		}
-	}
-	numWidth := 1
-	if visibleIssues >= 10 {
-		numWidth = 2
-	}
-	items := make([]list.Item, 0, len(m.issues)+len(m.groups))
-	num := 0
-	for _, g := range m.groups {
-		collapsed := m.collapsed[g.Key]
-		items = append(items, listItem{
-			GroupKey:  g.Key,
-			Count:     len(g.Issues),
-			Collapsed: collapsed,
-		})
-		if collapsed {
-			continue
+		numWidth := 1
+		if visibleIssues >= 10 {
+			numWidth = 2
 		}
-		for i := range g.Issues {
-			is := g.Issues[i]
-			num++
-			items = append(items, listItem{Issue: &is, Number: num, NumWidth: numWidth})
+		items = make([]list.Item, 0, len(m.issues)+len(m.groups))
+		for _, g := range m.groups {
+			collapsed := m.collapsed[g.Key]
+			items = append(items, listItem{
+				GroupKey:  g.Key,
+				Count:     len(g.Issues),
+				Collapsed: collapsed,
+			})
+			if collapsed {
+				continue
+			}
+			for i := range g.Issues {
+				is := g.Issues[i]
+				num++
+				items = append(items, listItem{Issue: &is, Number: num, NumWidth: numWidth})
+			}
 		}
+		m.list.SetItems(items)
 	}
-	m.list.SetItems(items)
 
 	if prevSelKey != "" || prevSelGroup != "" {
 		for idx, raw := range items {
@@ -664,6 +727,21 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
 		return
 	}
 	selected := index == m.Index()
+	if it.isSection() {
+		title := fmt.Sprintf("▼ %s (%d)", it.SectionTitle, it.Count)
+		if it.SectionReadOnly {
+			title += "  [ro]"
+		}
+		if budget := m.Width() - 1; budget > 4 && lipgloss.Width(title) > budget {
+			title = truncate(title, budget)
+		}
+		styled := d.styles.SectionHeader.Render(title)
+		if selected {
+			styled = d.styles.ListItemSelected.Render(title)
+		}
+		_, _ = fmt.Fprint(w, styled)
+		return
+	}
 	if it.isGroup() {
 		caret := "▾"
 		if it.Collapsed {
