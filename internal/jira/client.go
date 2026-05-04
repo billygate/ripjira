@@ -111,6 +111,17 @@ type Client struct {
 
 	mu        sync.Mutex
 	accountID string
+
+	// extraFields is appended to the search field list so configured Jira
+	// customfield_<id> values come back populated in Issue.CustomFields.
+	extraFields []string
+}
+
+// SetExtraFields configures additional Jira field IDs the client will
+// request alongside the default summary/status/etc set. Typically callers
+// pass `customfield_XXXXX` IDs sourced from config.yaml.
+func (c *Client) SetExtraFields(ids []string) {
+	c.extraFields = append([]string(nil), ids...)
 }
 
 // NewClient validates baseURL and returns a ready-to-use Client.

@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"slices"
-	"strings"
 )
 
 // KnownFields is the whitelist of field names usable in filters and group_by.
@@ -56,11 +54,10 @@ func validateSection(sec *Section) error {
 			return fmt.Errorf("any_of[%d]: %w", i, err)
 		}
 	}
-	for _, g := range sec.GroupBy {
-		if !slices.Contains(KnownFields, g) {
-			return fmt.Errorf("group_by: unknown field %q", g)
-		}
-	}
+	// Custom field names in group_by are accepted; the adapter resolves
+	// them via config. Unknown names that have no config mapping group
+	// every issue under "" at evaluation time.
+	_ = sec.GroupBy
 	if len(sec.OrderBy) > MaxOrderByLen {
 		return fmt.Errorf("order_by: too many keys (max %d)", MaxOrderByLen)
 	}
@@ -74,9 +71,10 @@ func validateSection(sec *Section) error {
 
 func validateFilter(f SectionFilter) error {
 	for field, clause := range f {
-		if !strings.HasPrefix(field, "__") && !slices.Contains(KnownFields, field) {
-			return fmt.Errorf("unknown field %q", field)
-		}
+		// Custom field names (anything not in KnownFields) are accepted; the
+		// adapter resolves them through config.custom_fields. Unknown names
+		// without a mapping silently return "" at evaluation time.
+		_ = field
 		if clause.IsEmpty() {
 			return fmt.Errorf("field %q: clause has no predicates", field)
 		}

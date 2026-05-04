@@ -8,11 +8,23 @@ import (
 	"github.com/billygate/ripjira/internal/jira"
 )
 
-// Adapter implements structure.Issue over jira.Issue.
-type Adapter struct{ issue jira.Issue }
+// Adapter implements structure.Issue over jira.Issue. customFields is the
+// optional name → Jira field id map (sourced from config.yaml's
+// custom_fields) so structure YAML can reference fields like
+// `billing_team` instead of `customfield_12345`.
+type Adapter struct {
+	issue        jira.Issue
+	customFields map[string]string
+}
 
-// New returns an Adapter for issue.
+// New returns an Adapter for issue with no custom-field mapping.
 func New(issue jira.Issue) Adapter { return Adapter{issue: issue} }
+
+// NewWithCustom returns an Adapter that resolves user-friendly custom field
+// names via the supplied name→id map.
+func NewWithCustom(issue jira.Issue, customFields map[string]string) Adapter {
+	return Adapter{issue: issue, customFields: customFields}
+}
 
 // Issue returns the wrapped jira.Issue (for callers that need to render it
 // after the structure evaluator picks it).
@@ -48,6 +60,9 @@ func (a Adapter) Field(name string) string {
 			return a.issue.Key[:i]
 		}
 		return ""
+	}
+	if id, ok := a.customFields[name]; ok {
+		return a.issue.CustomFields[id]
 	}
 	return ""
 }

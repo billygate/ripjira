@@ -2,6 +2,7 @@ package jira
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -185,6 +186,32 @@ type issueDTO struct {
 	Key            string             `json:"key"`
 	Fields         issueFieldsDTO     `json:"fields"`
 	RenderedFields *renderedFieldsDTO `json:"renderedFields,omitempty"`
+
+	// RawFields keeps the raw JSON for the "fields" object so customfield_*
+	// values that aren't part of issueFieldsDTO can be picked up generically.
+	RawFields map[string]json.RawMessage `json:"-"`
+}
+
+// UnmarshalJSON captures the raw "fields" object alongside the typed parse,
+// so custom fields not listed in issueFieldsDTO survive into RawFields.
+func (d *issueDTO) UnmarshalJSON(b []byte) error {
+	type alias issueDTO
+	aux := struct {
+		*alias
+		Fields json.RawMessage `json:"fields"`
+	}{alias: (*alias)(d)}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	if len(aux.Fields) > 0 {
+		if err := json.Unmarshal(aux.Fields, &d.Fields); err != nil {
+			return err
+		}
+		if err := json.Unmarshal(aux.Fields, &d.RawFields); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type searchJQLResp struct {
@@ -201,6 +228,50 @@ type transitionDTO struct {
 
 type transitionsResp struct {
 	Transitions []transitionDTO `json:"transitions"`
+}
+
+// flattenCustomFieldValue converts a raw Jira customfield value into a
+// human-readable string. Jira uses several shapes for custom field values
+// — plain string, {value: "..."}, {name: "..."}, [{value:...}, ...] for
+// multi-select — we collapse the common cases. Unknown shapes return "".
+func flattenCustomFieldValue(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var obj struct {
+		Value string `json:"value"`
+		Name  string `json:"name"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		if obj.Value != "" {
+			return obj.Value
+		}
+		if obj.Name != "" {
+			return obj.Name
+		}
+	}
+	var arr []struct {
+		Value string `json:"value"`
+		Name  string `json:"name"`
+	}
+	if err := json.Unmarshal(raw, &arr); err == nil && len(arr) > 0 {
+		parts := make([]string, 0, len(arr))
+		for _, e := range arr {
+			v := e.Value
+			if v == "" {
+				v = e.Name
+			}
+			if v != "" {
+				parts = append(parts, v)
+			}
+		}
+		return strings.Join(parts, ", ")
+	}
+	return ""
 }
 
 // browseURL returns the user-facing URL for a Jira issue key.
@@ -235,6 +306,21 @@ func (c *Client) dtoToIssue(d issueDTO) Issue {
 	if d.Fields.Parent != nil {
 		is.ParentKey = d.Fields.Parent.Key
 		is.ParentSummary = d.Fields.Parent.Fields.Summary
+	}
+	if len(d.RawFields) > 0 {
+		for id, raw := range d.RawFields {
+			if !strings.HasPrefix(id, "customfield_") {
+				continue
+			}
+			val := flattenCustomFieldValue(raw)
+			if val == "" {
+				continue
+			}
+			if is.CustomFields == nil {
+				is.CustomFields = map[string]string{}
+			}
+			is.CustomFields[id] = val
+		}
 	}
 	if len(d.Fields.Subtasks) > 0 {
 		subs := make([]SubtaskRef, 0, len(d.Fields.Subtasks))
@@ -373,7 +459,11 @@ func (c *Client) Search(ctx context.Context, jql string) ([]Issue, error) {
 	for {
 		q := url.Values{}
 		q.Set("jql", jql)
-		q.Set("fields", myIssuesFields)
+		fields := myIssuesFields
+		if len(c.extraFields) > 0 {
+			fields = fields + "," + strings.Join(c.extraFields, ",")
+		}
+		q.Set("fields", fields)
 		if token != "" {
 			q.Set("nextPageToken", token)
 		}

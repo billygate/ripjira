@@ -22,6 +22,12 @@ type Config struct {
 	Theme              string   `yaml:"theme"`
 	Icons              string   `yaml:"icons"`
 	EpicIssueTypes     []string `yaml:"epic_issue_types,omitempty"`
+
+	// CustomFields maps user-friendly field names (used in structures YAML)
+	// to Jira API field IDs (e.g. "billing_team" → "customfield_12345").
+	// The TUI passes the values into the structure adapter so filters and
+	// group_by entries can reference these names.
+	CustomFields map[string]string `yaml:"custom_fields,omitempty"`
 }
 
 // ErrPermissionsTooWide is returned by Load when the config file mode is wider

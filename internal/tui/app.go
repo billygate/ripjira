@@ -95,6 +95,7 @@ type Model struct {
 	displayName    string
 	defaultProject string
 	epicTypes      []string
+	customFields   map[string]string
 	initialIssues  []jira.Issue
 
 	assignDebounce    time.Duration
@@ -209,6 +210,21 @@ func WithDefaultProject(s string) Option {
 // grouping strategy can distinguish epic rows from their children.
 func WithEpicTypes(types []string) Option {
 	return func(m *Model) { m.epicTypes = append([]string(nil), types...) }
+}
+
+// WithCustomFields wires the user-friendly custom-field name → Jira API id
+// mapping. The structure adapter uses it so YAML can reference custom
+// fields by short names instead of `customfield_<id>`.
+func WithCustomFields(m map[string]string) Option {
+	return func(mod *Model) {
+		if len(m) == 0 {
+			return
+		}
+		mod.customFields = make(map[string]string, len(m))
+		for k, v := range m {
+			mod.customFields[k] = v
+		}
+	}
 }
 
 // WithInitialIssues seeds the list with a synchronous snapshot — used by
@@ -637,7 +653,7 @@ func (m *Model) feedList(issues []jira.Issue) {
 	}
 	adapters := make([]structure.Issue, len(issues))
 	for i := range issues {
-		adapters[i] = structureadapter.New(issues[i])
+		adapters[i] = structureadapter.NewWithCustom(issues[i], m.customFields)
 	}
 	applied := structure.Apply(adapters, &st)
 	secs := make([]panes.Section, 0, len(applied))
@@ -646,12 +662,43 @@ func (m *Model) feedList(issues []jira.Issue) {
 		for i, x := range a.Issues {
 			real[i] = x.(structureadapter.Adapter).Issue()
 		}
-		secs = append(secs, panes.Section{Title: a.Title, ReadOnly: st.IsReadOnly(), Issues: real})
+		section := panes.Section{Title: a.Title, ReadOnly: st.IsReadOnly(), Issues: real}
+		if len(a.GroupBy) > 0 {
+			tree := structure.GroupTree(a.Issues, a.GroupBy, "", 0)
+			section.Tree = treeToSectionNodes(tree)
+		}
+		secs = append(secs, section)
 	}
 	// Keep raw issues populated so cycling structures can re-apply without
 	// re-fetching; sections take precedence in the list-pane rebuild.
 	m.list.SetIssues(issues)
 	m.list.SetSections(secs)
+}
+
+// treeToSectionNodes converts a structure.TreeNode forest (carrying the
+// adapter-wrapped Issue interface) into the panes.SectionNode shape used by
+// the list-pane renderer (which works with concrete jira.Issue values).
+func treeToSectionNodes(nodes []structure.TreeNode) []panes.SectionNode {
+	out := make([]panes.SectionNode, 0, len(nodes))
+	for _, n := range nodes {
+		pn := panes.SectionNode{
+			Title: n.Title,
+			Path:  n.Path,
+			Depth: n.Depth,
+		}
+		if len(n.Children) > 0 {
+			pn.Children = treeToSectionNodes(n.Children)
+		} else {
+			pn.Issues = make([]jira.Issue, 0, len(n.Issues))
+			for _, x := range n.Issues {
+				if a, ok := x.(structureadapter.Adapter); ok {
+					pn.Issues = append(pn.Issues, a.Issue())
+				}
+			}
+		}
+		out = append(out, pn)
+	}
+	return out
 }
 
 // activeStructure resolves the currently-selected structure for the default

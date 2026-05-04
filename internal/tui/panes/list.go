@@ -69,6 +69,13 @@ type listItem struct {
 	Section         bool
 	SectionTitle    string
 	SectionReadOnly bool
+
+	// Depth is the indent level for tree-grouped rows (0 = top group, etc.).
+	// GroupPath uniquely identifies a tree node so collapse state survives
+	// rebuilds even when titles change. For non-tree group rows GroupPath
+	// equals GroupKey.
+	Depth     int
+	GroupPath string
 }
 
 func (l listItem) isSection() bool { return l.Section }
@@ -118,9 +125,26 @@ type List struct {
 // Section is one block in the sectioned-list render mode. When SetSections is
 // called with a non-empty slice the list renders section headers above the
 // grouped rows; passing nil reverts to flat grouping.
+//
+// When Tree is empty, Issues feed through the current grouping strategy as a
+// flat single-level grouping. When Tree is set, it overrides Issues and the
+// list walks the tree, emitting one group-header row per node and indenting
+// by node depth.
 type Section struct {
 	Title    string
 	ReadOnly bool
+	Issues   []jira.Issue
+	Tree     []SectionNode
+}
+
+// SectionNode is one level in a Section's multi-level grouping tree. Path
+// is a unique string used as the collapse-state key. Leaf nodes (Children
+// == nil) carry the actual issues; interior nodes carry only Children.
+type SectionNode struct {
+	Title    string
+	Path     string
+	Depth    int
+	Children []SectionNode
 	Issues   []jira.Issue
 }
 
@@ -602,6 +626,61 @@ func maxInt(a, b int) int {
 
 // rebuild projects the current []issues + strategy + collapse map into the
 // flat list of bubbles/list items.
+// appendTreeRows walks a SectionNode tree and emits flat list items in
+// display order. Default-collapses any path it has not seen before. Returns
+// the appended slice and the total number of leaf issues across the tree
+// (used for the parent section's badge count).
+func (m *List) appendTreeRows(items []list.Item, nodes []SectionNode, num *int) ([]list.Item, int) {
+	total := 0
+	for _, n := range nodes {
+		if _, seen := m.collapsed[n.Path]; !seen {
+			m.collapsed[n.Path] = true
+		}
+		issuesUnder := countIssuesIn(n)
+		total += issuesUnder
+		collapsed := m.collapsed[n.Path]
+		items = append(items, listItem{
+			GroupKey:  n.Path,
+			GroupPath: n.Path,
+			Count:     issuesUnder,
+			Collapsed: collapsed,
+			Depth:     n.Depth,
+		})
+		if collapsed {
+			continue
+		}
+		if len(n.Children) > 0 {
+			var sub int
+			items, sub = m.appendTreeRows(items, n.Children, num)
+			_ = sub // already counted via issuesUnder
+		} else {
+			for i := range n.Issues {
+				is := n.Issues[i]
+				*num++
+				items = append(items, listItem{
+					Issue:    &is,
+					Number:   *num,
+					NumWidth: 2,
+					Depth:    n.Depth + 1,
+				})
+			}
+		}
+	}
+	return items, total
+}
+
+// countIssuesIn counts leaf issues across the SectionNode subtree.
+func countIssuesIn(n SectionNode) int {
+	if len(n.Children) == 0 {
+		return len(n.Issues)
+	}
+	total := 0
+	for _, c := range n.Children {
+		total += countIssuesIn(c)
+	}
+	return total
+}
+
 // applyLocalFilter returns issues filtered by the case-insensitive substring
 // in m.localFilter, or the input slice unchanged when the filter is empty.
 func (m *List) applyLocalFilter(in []jira.Issue) []jira.Issue {
@@ -640,16 +719,34 @@ func (m *List) rebuild() {
 		// section's issues. Numbering continues across sections.
 		var sectionGroups []grouping.Group
 		for _, sec := range m.sections {
+			sectionItems := []list.Item{}
+			sectionCount := 0
+			if len(sec.Tree) > 0 {
+				sectionItems, sectionCount = m.appendTreeRows(sectionItems, sec.Tree, &num)
+			}
+			count := sectionCount
+			if len(sec.Tree) == 0 {
+				count = len(sec.Issues)
+			}
 			items = append(items, listItem{
 				Section:         true,
 				SectionTitle:    sec.Title,
 				SectionReadOnly: sec.ReadOnly,
-				Count:           len(sec.Issues),
+				Count:           count,
 			})
+			items = append(items, sectionItems...)
+			if len(sec.Tree) > 0 {
+				continue
+			}
 			groups := m.strategy.Group(m.applyLocalFilter(sec.Issues))
 			grouping.ApplySort(groups, m.sort, m.sortDesc)
 			sectionGroups = append(sectionGroups, groups...)
 			for _, g := range groups {
+				// Sections default to collapsed: structures usually pack many
+				// groups, so showing them folded gives an overview first.
+				if _, seen := m.collapsed[g.Key]; !seen {
+					m.collapsed[g.Key] = true
+				}
 				collapsed := m.collapsed[g.Key]
 				items = append(items, listItem{GroupKey: g.Key, Count: len(g.Issues), Collapsed: collapsed})
 				if collapsed {
@@ -751,7 +848,8 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
 		if it.Collapsed {
 			caret = "▸"
 		}
-		line := fmt.Sprintf("%s %s  (%d)", caret, it.GroupKey, it.Count)
+		indent := strings.Repeat("  ", it.Depth)
+		line := fmt.Sprintf("%s%s %s  (%d)", indent, caret, it.GroupKey, it.Count)
 		// Group label may be a parent epic line "KEY  Long summary" — clamp.
 		if budget := m.Width() - 1; budget > 4 && lipgloss.Width(line) > budget {
 			line = truncate(line, budget)
@@ -771,7 +869,7 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
 	} else {
 		numStr = strings.Repeat(" ", numW)
 	}
-	prefix := fmt.Sprintf("  %s %-10s %s ", numStr, it.Issue.Key, icon)
+	prefix := fmt.Sprintf("%s  %s %-10s %s ", strings.Repeat("  ", it.Depth), numStr, it.Issue.Key, icon)
 	// Pane width minus the prefix; clamp to a sane minimum so very narrow
 	// terminals still render *something* readable rather than just an
 	// ellipsis.
