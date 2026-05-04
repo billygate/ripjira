@@ -67,6 +67,10 @@ func (s *stubJiraClient) CreateMeta(context.Context, string, string) (jira.Creat
 func (s *stubJiraClient) CreateIssue(context.Context, jira.CreatePayload) (jira.Issue, error) {
 	return jira.Issue{}, nil
 }
+func (s *stubJiraClient) SearchEpics(context.Context, string, []string) ([]jira.Issue, error) {
+	return nil, nil
+}
+func (s *stubJiraClient) SetParent(context.Context, string, string) error { return nil }
 
 func TestClientLoader_LoadIssues(t *testing.T) {
 	t.Run("my tasks", func(t *testing.T) {

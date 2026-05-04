@@ -121,6 +121,15 @@ type issueFieldsDTO struct {
 	Worklog    *struct {
 		Worklogs []worklogDTO `json:"worklogs"`
 	} `json:"worklog"`
+	Parent *parentDTO `json:"parent"`
+}
+
+type parentDTO struct {
+	Key    string `json:"key"`
+	Fields struct {
+		Summary   string        `json:"summary"`
+		IssueType *issueTypeDTO `json:"issuetype"`
+	} `json:"fields"`
 }
 
 // worklogDTO is the wire form of a single worklog entry returned inline
@@ -222,6 +231,10 @@ func (c *Client) dtoToIssue(d issueDTO) Issue {
 		Created:  created,
 		Updated:  updated,
 		URL:      c.browseURL(d.Key),
+	}
+	if d.Fields.Parent != nil {
+		is.ParentKey = d.Fields.Parent.Key
+		is.ParentSummary = d.Fields.Parent.Fields.Summary
 	}
 	if len(d.Fields.Subtasks) > 0 {
 		subs := make([]SubtaskRef, 0, len(d.Fields.Subtasks))
@@ -349,7 +362,7 @@ func (c *Client) Myself(ctx context.Context) (User, error) {
 // myIssuesFields lists the fields requested from the new search/jql endpoint.
 // The endpoint returns no fields by default, so they must be enumerated
 // (or `*all` requested) for summary/status/priority/assignee to be populated.
-const myIssuesFields = "summary,status,priority,issuetype,assignee,reporter,updated"
+const myIssuesFields = "summary,status,priority,issuetype,assignee,reporter,updated,parent"
 
 // Search runs an arbitrary JQL query against /rest/api/3/search/jql,
 // pages through nextPageToken, and requests the explicit fields list
@@ -427,6 +440,46 @@ func (c *Client) UpdateDescription(ctx context.Context, key, body string) error 
 	}
 	doc := markdownToADF(body)
 	return c.UpdateIssue(ctx, key, map[string]any{"description": doc})
+}
+
+// SetParent attaches issue key to parentKey, or detaches it when
+// parentKey is empty (Jira interprets {"parent": null} as a removal).
+func (c *Client) SetParent(ctx context.Context, key, parentKey string) error {
+	if key == "" {
+		return errors.New("jira: issue key is required")
+	}
+	var parent any
+	if parentKey != "" {
+		parent = map[string]string{"key": parentKey}
+	}
+	return c.UpdateIssue(ctx, key, map[string]any{"parent": parent})
+}
+
+// SearchEpics returns candidate parent epics for projectKey, restricted
+// to the given issue type names (the project's epic-shaped types from
+// the Field Configuration), ordered most-recently-updated first.
+func (c *Client) SearchEpics(ctx context.Context, projectKey string, epicTypes []string) ([]Issue, error) {
+	if projectKey == "" {
+		return nil, errors.New("jira: project key is required")
+	}
+	if len(epicTypes) == 0 {
+		return nil, errors.New("jira: epic types list is empty")
+	}
+	return c.Search(ctx, buildEpicJQL(projectKey, epicTypes))
+}
+
+func buildEpicJQL(projectKey string, epicTypes []string) string {
+	q := func(s string) string {
+		s = strings.ReplaceAll(s, `\`, `\\`)
+		s = strings.ReplaceAll(s, `"`, `\"`)
+		return `"` + s + `"`
+	}
+	parts := make([]string, len(epicTypes))
+	for i, t := range epicTypes {
+		parts[i] = q(t)
+	}
+	return fmt.Sprintf(`project = %s AND issuetype IN (%s) ORDER BY updated DESC`,
+		q(projectKey), strings.Join(parts, ", "))
 }
 
 // AddWorklog logs work against issue. timeSpent uses Jira's compact

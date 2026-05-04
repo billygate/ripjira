@@ -117,6 +117,14 @@ func (l *cachingLoader) AssignIssue(ctx context.Context, key, accountID string) 
 	return nil
 }
 
+func (l *cachingLoader) SetParent(ctx context.Context, key, parentKey string) error {
+	if err := l.AppLoader.SetParent(ctx, key, parentKey); err != nil {
+		return err
+	}
+	l.invalidate(key)
+	return nil
+}
+
 func (l *cachingLoader) invalidate(key string) {
 	l.issues.delete(key)
 	l.comments.delete(key)

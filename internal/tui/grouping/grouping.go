@@ -180,14 +180,84 @@ func priorityRank(name string) int {
 	return len(priorityOrder)
 }
 
+// ByParent groups issues into an "Epics" zone (issues whose Type.Name
+// matches one of EpicTypes, case-insensitive), then one bucket per
+// non-empty ParentKey sorted alphabetically by key, then a "No epic"
+// trailing bucket. Within each bucket: priority desc, then updated desc.
+type ByParent struct {
+	EpicTypes []string
+}
+
+// Name implements Strategy.
+func (ByParent) Name() string { return "parent" }
+
+// Group implements Strategy.
+func (b ByParent) Group(issues []jira.Issue) []Group {
+	isEpic := map[string]bool{}
+	for _, t := range b.EpicTypes {
+		isEpic[strings.ToLower(t)] = true
+	}
+
+	var epics, orphans []jira.Issue
+	parentKeys := []string{}
+	parentBuckets := map[string][]jira.Issue{}
+
+	for _, is := range issues {
+		if isEpic[strings.ToLower(is.Type.Name)] {
+			epics = append(epics, is)
+			continue
+		}
+		if is.ParentKey == "" {
+			orphans = append(orphans, is)
+			continue
+		}
+		if _, seen := parentBuckets[is.ParentKey]; !seen {
+			parentKeys = append(parentKeys, is.ParentKey)
+		}
+		parentBuckets[is.ParentKey] = append(parentBuckets[is.ParentKey], is)
+	}
+
+	sort.Strings(parentKeys)
+	sortByPriorityDesc(epics)
+	sortByPriorityDesc(orphans)
+	for k, v := range parentBuckets {
+		sortByPriorityDesc(v)
+		parentBuckets[k] = v
+	}
+
+	out := make([]Group, 0, 2+len(parentKeys))
+	if len(epics) > 0 {
+		out = append(out, Group{Key: "Epics", Issues: epics})
+	}
+	for _, k := range parentKeys {
+		bucket := parentBuckets[k]
+		label := k
+		for _, is := range bucket {
+			if is.ParentSummary != "" {
+				label = k + "  " + is.ParentSummary
+				break
+			}
+		}
+		out = append(out, Group{Key: label, Issues: bucket})
+	}
+	if len(orphans) > 0 {
+		out = append(out, Group{Key: "No epic", Issues: orphans})
+	}
+	return out
+}
+
 // ByName returns the strategy registered under name (case-insensitive).
 // Empty or unknown names fall back to ByStatus, matching the config default.
-func ByName(name string) Strategy {
+// epicTypes is used by the "parent" strategy to distinguish epic rows from
+// child issues; other strategies ignore it.
+func ByName(name string, epicTypes []string) Strategy {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "priority":
 		return ByPriority{}
 	case "epic":
 		return ByEpicAndPriority{}
+	case "parent":
+		return ByParent{EpicTypes: epicTypes}
 	}
 	return ByStatus{}
 }

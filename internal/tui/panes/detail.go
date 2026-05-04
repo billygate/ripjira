@@ -237,6 +237,18 @@ func (d *Detail) UpdateDescription(key, body string) bool {
 	return true
 }
 
+// UpdateParent rewrites the parent epic key/summary of the displayed issue
+// when it matches key, then re-renders. Used by optimistic epic-link edits.
+func (d *Detail) UpdateParent(key, parentKey, parentSummary string) bool {
+	if d.issue == nil || d.issue.Key != key {
+		return false
+	}
+	d.issue.ParentKey = parentKey
+	d.issue.ParentSummary = parentSummary
+	d.refreshContent()
+	return true
+}
+
 // RemoveWorklogByID drops the worklog with the given ID from the
 // displayed issue. Used by optimistic delete-worklog.
 func (d *Detail) RemoveWorklogByID(owningKey, worklogID string) bool {
@@ -680,6 +692,13 @@ func (d *Detail) refreshContent() {
 		fmt.Fprintf(&b, "Assignee:  %s\n", d.issue.Assignee.DisplayName)
 	} else {
 		b.WriteString("Assignee:  unassigned\n")
+	}
+	if d.issue.ParentKey != "" {
+		if d.issue.ParentSummary != "" {
+			fmt.Fprintf(&b, "Epic:      %s  %s\n", d.issue.ParentKey, d.issue.ParentSummary)
+		} else {
+			fmt.Fprintf(&b, "Epic:      %s\n", d.issue.ParentKey)
+		}
 	}
 	if len(d.issue.Labels) > 0 {
 		fmt.Fprintf(&b, "Labels:    %s\n", strings.Join(d.issue.Labels, ", "))

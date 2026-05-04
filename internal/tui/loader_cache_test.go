@@ -75,6 +75,10 @@ func (l *countingLoader) CreateMeta(context.Context, string, string) (jira.Creat
 func (l *countingLoader) CreateIssue(context.Context, jira.CreatePayload) (jira.Issue, error) {
 	return jira.Issue{}, nil
 }
+func (l *countingLoader) SearchEpics(context.Context, string, []string) ([]jira.Issue, error) {
+	return nil, nil
+}
+func (l *countingLoader) SetParent(context.Context, string, string) error { return nil }
 
 func TestCachingLoader_HitsAndInvalidation(t *testing.T) {
 	now := time.Now()

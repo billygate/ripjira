@@ -96,6 +96,7 @@ ripjira login --reset   # delete the stored token first, then re-run
 | `enter`            | open issue                            |
 | `s`                | change status (transition picker)     |
 | `a`                | assign to a user                      |
+| `E`                | edit epic (set or detach parent)      |
 | `c`                | add a comment                         |
 | `n`                | create a new issue                    |
 | `S`                | create a subtask of the current issue |
@@ -133,11 +134,19 @@ config.
 base_url: https://acme.atlassian.net
 email: you@acme.com
 default_project: PROJ          # optional; pre-selects in create overlay
-default_grouping: status       # status | priority | epic_priority
+default_grouping: status       # status | priority | epic_priority | parent
 auto_refresh_seconds: 60       # 0 disables; otherwise silent list refresh
 theme: tokyonight              # see Themes above
 icons: unicode                 # unicode | ascii
+epic_issue_types:              # issuetypes treated as epic-shaped
+  - Epic
+  - Epic Feature
 ```
+
+The `parent` grouping buckets tasks under their parent epic — epics on
+top, then one bucket per parent, then a trailing "No epic" bucket.
+`epic_issue_types` controls which issuetype names count as epic-shaped
+when listing pickable parents and rendering the epics-on-top section.
 
 `XDG_CONFIG_HOME` is honoured if set. The file is rewritten with mode
 `0600`; `ripjira` warns (but still loads) if it finds wider permissions.

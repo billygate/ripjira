@@ -1,0 +1,14 @@
+{
+  "key": "BILLING-10328",
+  "fields": {
+    "summary": "Task with parent",
+    "issuetype": { "name": "Task" },
+    "parent": {
+      "key": "BILLING-10319",
+      "fields": {
+        "summary": "Setup deploy",
+        "issuetype": { "name": "Epic Feature" }
+      }
+    }
+  }
+}

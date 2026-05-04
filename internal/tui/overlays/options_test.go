@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -24,6 +25,22 @@ func testStyles(t *testing.T) styles.Styles {
 		t.Fatalf("load tokyonight: %v", err)
 	}
 	return styles.New(p)
+}
+
+func TestOptionsGroupings_IncludesParent(t *testing.T) {
+	want := map[string]string{
+		"status":   "Status",
+		"priority": "Priority",
+		"epic":     "Epic",
+		"parent":   "Parent (epic)",
+	}
+	got := map[string]string{}
+	for _, g := range optionsGroupings {
+		got[g.Name] = g.Label
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("groupings = %#v, want %#v", got, want)
+	}
 }
 
 func TestOptions_HiddenByDefault(t *testing.T) {
