@@ -927,13 +927,8 @@ func TestTabBar_NextTabCyclesForward(t *testing.T) {
 	}
 	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
 	m = mi.(Model)
-	if m.view != panes.ViewStructures {
-		t.Errorf("after ]]]]]] view = %v, want ViewStructures", m.view)
-	}
-	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-	m = mi.(Model)
 	if m.view != panes.ViewMyTasks {
-		t.Errorf("wrap: after ]]]]]]] view = %v, want ViewMyTasks", m.view)
+		t.Errorf("wrap: after ]]]]]] view = %v, want ViewMyTasks", m.view)
 	}
 }
 
@@ -942,20 +937,20 @@ func TestTabBar_PrevTabCyclesBackward(t *testing.T) {
 	m, _ = sendSize(m, 80, 24)
 	mi, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
 	m = mi.(Model)
-	if m.view != panes.ViewStructures {
-		t.Errorf("after [ view = %v, want ViewStructures", m.view)
+	if m.view != panes.ViewMentions {
+		t.Errorf("after [ view = %v, want ViewMentions", m.view)
 	}
 	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
 	m = mi.(Model)
-	if m.view != panes.ViewMentions {
-		t.Errorf("after [[ view = %v, want ViewMentions", m.view)
+	if m.view != panes.ViewSprint {
+		t.Errorf("after [[ view = %v, want ViewSprint", m.view)
 	}
 }
 
 func TestTabBar_SearchExcludedFromCycle(t *testing.T) {
 	m := newTestModel(t)
 	m, _ = sendSize(m, 80, 24)
-	for range 7 {
+	for range 6 {
 		mi, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
 		m = mi.(Model)
 		if m.view == panes.ViewSearch {
