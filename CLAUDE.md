@@ -146,9 +146,9 @@ same change:
 3. `README.md` Keymap table — user-facing reference; outdated entries here
    are how users discover the binding is wrong.
 
-The bottom hint bar intentionally only shows the tab navigation keys
-(`}`/`{`, `]`/`[`) and `?`; do not expand it. All other bindings live in
-the help overlay.
+The bottom hint bar intentionally only shows movement (`↑`/`↓`), tab
+navigation (`}`/`{`, `]`/`[`), and `?`; do not expand it. All other
+bindings live in the help overlay.
 
 ## Commit messages
 

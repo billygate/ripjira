@@ -3015,6 +3015,7 @@ func (m Model) renderPrefetchIndicator() string {
 
 func (m Model) renderHintBar() string {
 	parts := []string{
+		"↑/↓ nav",
 		"}/{ top tab",
 		"]/[ sub-tab",
 		"? help",
