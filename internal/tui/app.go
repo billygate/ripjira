@@ -14,6 +14,7 @@ import (
 
 	"github.com/billygate/ripjira/internal/jira"
 	"github.com/billygate/ripjira/internal/state"
+	"github.com/billygate/ripjira/internal/structure"
 	"github.com/billygate/ripjira/internal/tui/gfx"
 	"github.com/billygate/ripjira/internal/tui/grouping"
 	"github.com/billygate/ripjira/internal/tui/overlays"
@@ -118,6 +119,11 @@ type Model struct {
 	prefetchCancel context.CancelFunc
 
 	pendingQuitUntil time.Time
+
+	structures      *structure.Store
+	structureEvents <-chan structure.Event
+	currentStructID map[string]string
+	loadedStructs   map[string][]structure.Structure
 }
 
 // QuitArmed reports whether the user has pressed Esc once on the main view
@@ -272,6 +278,8 @@ func New(p themes.Palette, opts ...Option) Model {
 	if len(m.initialIssues) > 0 {
 		m.list.SetIssues(m.initialIssues)
 	}
+	m.currentStructID = map[string]string{}
+	m.loadedStructs = map[string][]structure.Structure{}
 	if m.statePath != "" {
 		if st, err := state.Load(m.statePath); err == nil {
 			if st.Grouping != "" {
@@ -287,9 +295,27 @@ func New(p themes.Palette, opts ...Option) Model {
 			}
 			m.list.SetSort(grouping.SortByName(sortName), desc)
 			m.recentKeys = append([]string(nil), st.RecentlyViewed...)
+			for k, v := range st.LastStructure {
+				m.currentStructID[k] = v
+			}
 		}
 	}
 	return m
+}
+
+// WithStructures wires a Store and a hot-reload watcher into the model. Call
+// from cmd/ripjira; tests skip this option so they don't spawn an fsnotify
+// goroutine. ctx scopes the watcher; cancel it on app shutdown.
+func WithStructures(ctx context.Context, store *structure.Store) Option {
+	return func(m *Model) {
+		if store == nil {
+			return
+		}
+		m.structures = store
+		if events, err := structure.Watch(ctx, store.Dir()); err == nil {
+			m.structureEvents = events
+		}
+	}
 }
 
 // maxRecentKeys caps the recently-viewed list. Twenty is a comfortable
@@ -545,10 +571,29 @@ func (m Model) Init() tea.Cmd {
 	if tick := m.scheduleAutoRefresh(); tick != nil {
 		cmds = append(cmds, tick)
 	}
+	if cmd := m.watchStructuresNextCmd(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	if len(cmds) == 0 {
 		return nil
 	}
 	return tea.Batch(cmds...)
+}
+
+// watchStructuresNextCmd blocks for the next watcher event and translates it
+// into structureChangedMsg. Re-armed by the Update handler after each event.
+func (m Model) watchStructuresNextCmd() tea.Cmd {
+	if m.structureEvents == nil {
+		return nil
+	}
+	events := m.structureEvents
+	return func() tea.Msg {
+		ev, ok := <-events
+		if !ok {
+			return nil
+		}
+		return structureChangedMsg{Project: ev.ProjectKey}
+	}
 }
 
 // dispatchListRefresh cancels any in-flight list fetch, bumps the generation
@@ -641,6 +686,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Adjust(msg.Delta)
 		return m, cmd
+	case structureChangedMsg:
+		delete(m.loadedStructs, msg.Project)
+		return m, m.watchStructuresNextCmd()
 	case accountIDFetchedMsg:
 		stopSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: -1} }
 		if msg.Err != nil {

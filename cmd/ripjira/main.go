@@ -19,6 +19,7 @@ import (
 	"github.com/billygate/ripjira/internal/config"
 	"github.com/billygate/ripjira/internal/jira"
 	"github.com/billygate/ripjira/internal/state"
+	"github.com/billygate/ripjira/internal/structure"
 	"github.com/billygate/ripjira/internal/tui"
 	"github.com/billygate/ripjira/internal/tui/gfx"
 	"github.com/billygate/ripjira/internal/tui/overlays"
@@ -412,6 +413,11 @@ func runTUI(cfg *config.Config, client *jira.Client, _, _ io.Writer) error {
 	}
 	if cfg.AutoRefreshSeconds > 0 {
 		opts = append(opts, tui.WithAutoRefresh(time.Duration(cfg.AutoRefreshSeconds)*time.Second))
+	}
+	if dir, err := structure.DefaultDir(); err == nil {
+		structCtx, structCancel := context.WithCancel(context.Background())
+		defer structCancel()
+		opts = append(opts, tui.WithStructures(structCtx, structure.NewStore(dir)))
 	}
 	model := tui.New(palette, opts...)
 
