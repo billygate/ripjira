@@ -39,7 +39,9 @@ type Keymap struct {
 	EditPriority       key.Binding
 	EditLabels         key.Binding
 	EditDueDate        key.Binding
+	EditDescription    key.Binding
 	AddLink            key.Binding
+	RemoveLink         key.Binding
 	Watch              key.Binding
 	Unwatch            key.Binding
 	LogWork            key.Binding
@@ -167,9 +169,17 @@ func DefaultKeymap() Keymap {
 			key.WithKeys("D"),
 			key.WithHelp("D", "edit due date"),
 		),
+		EditDescription: key.NewBinding(
+			key.WithKeys("M"),
+			key.WithHelp("M", "edit description"),
+		),
 		AddLink: key.NewBinding(
 			key.WithKeys("+"),
 			key.WithHelp("+", "add link"),
+		),
+		RemoveLink: key.NewBinding(
+			key.WithKeys("-"),
+			key.WithHelp("-", "remove link"),
 		),
 		Watch: key.NewBinding(
 			key.WithKeys("w"),

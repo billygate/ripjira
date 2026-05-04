@@ -388,6 +388,20 @@ func (c *Client) UpdateIssue(ctx context.Context, key string, fields map[string]
 	return c.do(ctx, http.MethodPut, path, body, nil)
 }
 
+// UpdateDescription replaces the issue's description with the given
+// plain-text body, encoded as a minimal ADF document. Markdown structure
+// in the input is preserved as literal text — ripjira does not yet
+// implement a markdown→ADF round-trip, so users editing a richly
+// formatted description should expect their lists/headings/code-blocks
+// to flatten to paragraphs.
+func (c *Client) UpdateDescription(ctx context.Context, key, body string) error {
+	if key == "" {
+		return errors.New("jira: issue key is required")
+	}
+	doc := textToADF(body)
+	return c.UpdateIssue(ctx, key, map[string]any{"description": doc})
+}
+
 // AddWorklog logs work against issue. timeSpent uses Jira's compact
 // format ("1h 30m", "2d", "45m") and is validated server-side. comment is
 // optional; when non-empty it is sent as an ADF paragraph.
@@ -463,6 +477,17 @@ func (c *Client) CreateIssueLink(ctx context.Context, typeName, inwardKey, outwa
 		"outwardIssue": map[string]any{"key": outwardKey},
 	}
 	return c.do(ctx, http.MethodPost, "/rest/api/3/issueLink", body, nil)
+}
+
+// DeleteIssueLink removes the link with the given ID. Returns 404 from
+// the API if the link doesn't exist; the caller's error toast is fine for
+// that.
+func (c *Client) DeleteIssueLink(ctx context.Context, linkID string) error {
+	if linkID == "" {
+		return errors.New("jira: link ID is required")
+	}
+	path := "/rest/api/3/issueLink/" + url.PathEscape(linkID)
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
 }
 
 // GetIssue returns the full issue including rendered description and

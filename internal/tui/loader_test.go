@@ -45,9 +45,11 @@ func (s *stubJiraClient) AddComment(context.Context, string, string) error      
 func (s *stubJiraClient) SearchUsers(context.Context, string) ([]jira.User, error) { return nil, nil }
 func (s *stubJiraClient) AssignIssue(context.Context, string, string) error        { return nil }
 func (s *stubJiraClient) UpdateIssue(context.Context, string, map[string]any) error { return nil }
+func (s *stubJiraClient) UpdateDescription(context.Context, string, string) error   { return nil }
 func (s *stubJiraClient) CreateIssueLink(context.Context, string, string, string) error {
 	return nil
 }
+func (s *stubJiraClient) DeleteIssueLink(context.Context, string) error { return nil }
 func (s *stubJiraClient) AddWatcher(context.Context, string, string) error    { return nil }
 func (s *stubJiraClient) RemoveWatcher(context.Context, string, string) error { return nil }
 func (s *stubJiraClient) AddWorklog(context.Context, string, string, string) error {

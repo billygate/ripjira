@@ -69,8 +69,11 @@ type Model struct {
 	options    overlays.Options
 	edit       overlays.Edit
 	favorites  overlays.Favorites
-	link       overlays.Link
-	worklog    overlays.Worklog
+	link        overlays.Link
+	linkRemove  overlays.RemoveLink
+	worklog     overlays.Worklog
+	description overlays.Description
+	priority    overlays.Priority
 
 	list   panes.List
 	detail panes.Detail
@@ -80,6 +83,7 @@ type Model struct {
 	cachePath      string
 	statePath      string
 	accountID      string
+	displayName    string
 	defaultProject string
 	initialIssues  []jira.Issue
 
@@ -99,6 +103,10 @@ type Model struct {
 	// recentKeys is the bounded most-recently-viewed list (head = newest).
 	// Loaded from state.json at startup, persisted on every push.
 	recentKeys []string
+
+	// pendingDeletedLink stores the just-removed link so handleLinkDeleteDone
+	// can re-append it on failure. Cleared on each result.
+	pendingDeletedLink jira.IssueLink
 
 	listToken  int
 	listCancel context.CancelFunc
@@ -121,7 +129,8 @@ func (m Model) canArmQuit() bool {
 	if m.help.Visible() || m.transition.Visible() || m.comment.Visible() ||
 		m.assign.Visible() || m.create.Visible() || m.options.Visible() ||
 		m.edit.Visible() || m.favorites.Visible() || m.link.Visible() ||
-		m.worklog.Visible() {
+		m.linkRemove.Visible() || m.worklog.Visible() || m.description.Visible() ||
+		m.priority.Visible() {
 		return false
 	}
 	if m.list.SearchEditing() || m.list.LocalFilterEditing() {
@@ -230,7 +239,10 @@ func New(p themes.Palette, opts ...Option) Model {
 		edit:       overlays.NewEdit(km.CloseOverlay),
 		favorites:  overlays.NewFavorites(km.CloseOverlay),
 		link:       overlays.NewLink(km.CloseOverlay),
-		worklog:    overlays.NewWorklog(km.CloseOverlay),
+		linkRemove:  overlays.NewRemoveLink(km.CloseOverlay),
+		worklog:     overlays.NewWorklog(km.CloseOverlay),
+		description: overlays.NewDescription(km.CloseOverlay),
+		priority:    overlays.NewPriority(km.CloseOverlay),
 		list:       panes.New(st, grouping.ByEpicAndPriority{}, 1, 1),
 		detail:     panes.NewDetail(st, panesNoopLoader{}, 1, 1),
 		browser:    OSOpener{},
@@ -315,6 +327,29 @@ func (m Model) recentJQL() string {
 		parts[i] = `"` + k + `"`
 	}
 	return "key in (" + strings.Join(parts, ", ") + ")"
+}
+
+// sprintJQL returns the JQL backing the SPRINT tab — the user's open
+// issues in any active sprint they have access to. Empty when the user
+// is not assigned to any project that uses sprints; the loader will then
+// short-circuit instead of pinging Jira.
+func (m Model) sprintJQL() string {
+	return "assignee = currentUser() AND sprint in openSprints() AND resolution = Unresolved ORDER BY updated DESC"
+}
+
+// mentionsJQL returns the JQL backing the MENTIONS tab — issues whose
+// description, summary, or any comment contains the user's display name.
+// Imperfect (matches plain-text occurrences too, not just @-mentions),
+// but Jira does not expose a clean "mentions me" predicate. Empty when
+// the display name is not yet known so the loader skips the request.
+func (m Model) mentionsJQL() string {
+	if strings.TrimSpace(m.displayName) == "" {
+		return ""
+	}
+	// Escape any embedded quotes — display names usually don't contain
+	// them, but defence in depth costs nothing.
+	escaped := strings.ReplaceAll(m.displayName, `"`, `\"`)
+	return `text ~ "` + escaped + `" ORDER BY updated DESC`
 }
 
 // reorderByRecent sorts issues into the order they appear in m.recentKeys.
@@ -469,8 +504,9 @@ type cacheLoadedMsg struct {
 // kicked off in Init. The app saves the ID for cache scoping and then
 // dispatches a cache-load command.
 type accountIDFetchedMsg struct {
-	AccountID string
-	Err       error
+	AccountID   string
+	DisplayName string
+	Err         error
 }
 
 // Init implements tea.Model. When a loader is wired up, Init returns a
@@ -484,7 +520,7 @@ func (m Model) Init() tea.Cmd {
 			func() tea.Msg { return BackgroundActivityMsg{Delta: 1} },
 			func() tea.Msg {
 				me, err := loader.GetMyself(context.Background())
-				return accountIDFetchedMsg{AccountID: me.AccountID, Err: err}
+				return accountIDFetchedMsg{AccountID: me.AccountID, DisplayName: me.DisplayName, Err: err}
 			},
 		)
 		cmds = append(cmds, func() tea.Msg { return refreshListMsg{} })
@@ -516,8 +552,13 @@ func (m Model) dispatchListRefresh() (Model, tea.Cmd) {
 	loader := m.loader
 	view := m.view
 	query := m.searchQuery
-	if view == panes.ViewRecent {
+	switch view {
+	case panes.ViewRecent:
 		query = m.recentJQL()
+	case panes.ViewSprint:
+		query = m.sprintJQL()
+	case panes.ViewMentions:
+		query = m.mentionsJQL()
 	}
 	cmd := tea.Batch(
 		func() tea.Msg { return BackgroundActivityMsg{Delta: 1} },
@@ -589,6 +630,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, stopSpinner
 		}
 		m.accountID = msg.AccountID
+		m.displayName = msg.DisplayName
 		m.create = m.create.SetCurrentUserAccountID(msg.AccountID)
 		return m, tea.Batch(stopSpinner, m.loadCacheCmd())
 	case autoRefreshTickMsg:
@@ -628,6 +670,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleLinkSubmitted(msg)
 	case linkDoneMsg:
 		return m.handleLinkDone(msg)
+	case overlays.LinkDeletedMsg:
+		return m.handleLinkDeletePicked(msg)
+	case linkDeletedDoneMsg:
+		return m.handleLinkDeleteDone(msg)
+	case overlays.DescriptionSubmittedMsg:
+		return m.handleDescriptionSubmitted(msg)
+	case descriptionDoneMsg:
+		return m.handleDescriptionDone(msg)
+	case overlays.PrioritySelectedMsg:
+		return m.handlePrioritySelected(msg)
 	case watchDoneMsg:
 		return m.handleWatchDone(msg)
 	case overlays.WorklogSubmittedMsg:
@@ -881,9 +933,24 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.link, cmd = m.link.Update(msg)
 		return m, cmd
 	}
+	if m.linkRemove.Visible() {
+		var cmd tea.Cmd
+		m.linkRemove, cmd = m.linkRemove.Update(msg)
+		return m, cmd
+	}
 	if m.worklog.Visible() {
 		var cmd tea.Cmd
 		m.worklog, cmd = m.worklog.Update(msg)
+		return m, cmd
+	}
+	if m.description.Visible() {
+		var cmd tea.Cmd
+		m.description, cmd = m.description.Update(msg)
+		return m, cmd
+	}
+	if m.priority.Visible() {
+		var cmd tea.Cmd
+		m.priority, cmd = m.priority.Update(msg)
 		return m, cmd
 	}
 	// While the list pane's search input is being edited, the input must
@@ -974,13 +1041,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keymap.EditSummary):
 		return m.openEditOverlay(overlays.EditSummary)
 	case key.Matches(msg, m.keymap.EditPriority):
-		return m.openEditOverlay(overlays.EditPriority)
+		return m.openPriorityPicker()
 	case key.Matches(msg, m.keymap.EditLabels):
 		return m.openEditOverlay(overlays.EditLabels)
 	case key.Matches(msg, m.keymap.EditDueDate):
 		return m.openEditOverlay(overlays.EditDueDate)
+	case key.Matches(msg, m.keymap.EditDescription):
+		return m.openDescriptionOverlay()
 	case key.Matches(msg, m.keymap.AddLink):
 		return m.openLinkOverlay()
+	case key.Matches(msg, m.keymap.RemoveLink):
+		return m.openRemoveLinkOverlay()
 	case key.Matches(msg, m.keymap.Watch):
 		return m.dispatchWatch(true)
 	case key.Matches(msg, m.keymap.Unwatch):
@@ -1237,6 +1308,196 @@ func (m Model) handleWorklogDone(msg worklogDoneMsg) (tea.Model, tea.Cmd) {
 	toast := func() tea.Msg {
 		return ToastMsg{
 			Text:  "Logged " + msg.TimeSpent + " on " + msg.IssueKey,
+			Level: ToastInfo,
+		}
+	}
+	return m, tea.Batch(stopSpinner, toast)
+}
+
+// openPriorityPicker opens the priority picker for the current issue
+// with the cursor on the issue's current priority.
+func (m Model) openPriorityPicker() (tea.Model, tea.Cmd) {
+	issue := m.detail.Issue()
+	if issue == nil {
+		issue = m.list.Selected()
+	}
+	if issue == nil {
+		return m, nil
+	}
+	m.priority = m.priority.Show(issue.Key, issue.Priority.Name)
+	return m, nil
+}
+
+// handlePrioritySelected synthesises an EditSubmittedMsg for EditPriority
+// so the existing optimistic-update + rollback logic handles the picker
+// path uniformly with the text-input path.
+func (m Model) handlePrioritySelected(msg overlays.PrioritySelectedMsg) (tea.Model, tea.Cmd) {
+	return m.handleEditSubmitted(overlays.EditSubmittedMsg{
+		IssueKey: msg.IssueKey,
+		Field:    overlays.EditPriority,
+		Value:    msg.Name,
+	})
+}
+
+// openDescriptionOverlay opens the description-edit textarea, prefilled
+// with the current markdown body.
+func (m Model) openDescriptionOverlay() (tea.Model, tea.Cmd) {
+	issue := m.detail.Issue()
+	if issue == nil {
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.description, cmd = m.description.Show(issue.Key, issue.Description)
+	return m, cmd
+}
+
+// descriptionDoneMsg carries the result of an UpdateDescription call.
+type descriptionDoneMsg struct {
+	IssueKey string
+	NewBody  string
+	PrevBody string
+	Err      error
+}
+
+// handleDescriptionSubmitted dispatches UpdateDescription with optimistic
+// local update of the displayed markdown body. On error the previous
+// body is restored.
+func (m Model) handleDescriptionSubmitted(msg overlays.DescriptionSubmittedMsg) (tea.Model, tea.Cmd) {
+	if m.loader == nil {
+		return m, nil
+	}
+	issue := m.detail.Issue()
+	if issue == nil || issue.Key != msg.IssueKey {
+		return m, nil
+	}
+	prev := issue.Description
+	if msg.Body == prev {
+		return m, nil
+	}
+	m.detail.UpdateDescription(msg.IssueKey, msg.Body)
+
+	loader := m.loader
+	key, body := msg.IssueKey, msg.Body
+	startSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: 1} }
+	call := func() tea.Msg {
+		err := loader.UpdateDescription(context.Background(), key, body)
+		return descriptionDoneMsg{IssueKey: key, NewBody: body, PrevBody: prev, Err: err}
+	}
+	return m, tea.Batch(startSpinner, call)
+}
+
+// handleDescriptionDone consumes the UpdateDescription result.
+func (m Model) handleDescriptionDone(msg descriptionDoneMsg) (tea.Model, tea.Cmd) {
+	stopSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: -1} }
+	if msg.Err != nil {
+		m.detail.UpdateDescription(msg.IssueKey, msg.PrevBody)
+		toast := func() tea.Msg {
+			return ToastMsg{
+				Text:  "Edit description failed: " + msg.Err.Error(),
+				Level: ToastError,
+			}
+		}
+		return m, tea.Batch(stopSpinner, toast)
+	}
+	toast := func() tea.Msg {
+		return ToastMsg{Text: "Updated description", Level: ToastInfo}
+	}
+	return m, tea.Batch(stopSpinner, toast)
+}
+
+// openRemoveLinkOverlay opens the remove-link picker over the current
+// issue's links. No-op when no issue is selected; opens with an empty
+// state when the issue has no links yet (the user gets visual feedback
+// the keypress was seen).
+func (m Model) openRemoveLinkOverlay() (tea.Model, tea.Cmd) {
+	issue := m.detail.Issue()
+	if issue == nil {
+		return m, nil
+	}
+	entries := make([]overlays.LinkEntry, 0, len(issue.Links))
+	for _, l := range issue.Links {
+		entries = append(entries, overlays.LinkEntry{
+			ID:       l.ID,
+			Relation: l.Relation,
+			OtherKey: l.OtherKey,
+			Summary:  l.Summary,
+		})
+	}
+	m.linkRemove = m.linkRemove.Show(issue.Key, entries)
+	return m, nil
+}
+
+// linkDeletedDoneMsg carries the result of a DeleteIssueLink call.
+type linkDeletedDoneMsg struct {
+	IssueKey string
+	OtherKey string
+	Err      error
+}
+
+// handleLinkDeletePicked dispatches DeleteIssueLink with optimistic local
+// removal — the link disappears from the detail pane immediately. On
+// failure it is restored from the prior snapshot.
+func (m Model) handleLinkDeletePicked(msg overlays.LinkDeletedMsg) (tea.Model, tea.Cmd) {
+	if m.loader == nil || msg.LinkID == "" {
+		return m, nil
+	}
+	// Snapshot for revert.
+	var prev jira.IssueLink
+	if issue := m.detail.Issue(); issue != nil && issue.Key == msg.IssueKey {
+		for _, l := range issue.Links {
+			if l.ID == msg.LinkID {
+				prev = l
+				break
+			}
+		}
+	}
+	m.detail.RemoveLink(msg.IssueKey, msg.OtherKey)
+
+	loader := m.loader
+	linkID := msg.LinkID
+	owning := msg.IssueKey
+	other := msg.OtherKey
+	startSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: 1} }
+	call := func() tea.Msg {
+		err := loader.DeleteLink(context.Background(), linkID)
+		if err != nil {
+			// Reattach a copy for revert via the result handler.
+			return linkDeletedDoneMsg{
+				IssueKey: owning,
+				OtherKey: other,
+				Err:      err,
+			}
+		}
+		_ = prev
+		return linkDeletedDoneMsg{IssueKey: owning, OtherKey: other}
+	}
+	// We can't capture the closure-mutated `prev` without a state field;
+	// stash it on the model. Errors revert by re-appending what we knew.
+	m.pendingDeletedLink = prev
+	return m, tea.Batch(startSpinner, call)
+}
+
+// handleLinkDeleteDone toasts success/failure of a link deletion. On
+// failure, re-adds the optimistically-removed link.
+func (m Model) handleLinkDeleteDone(msg linkDeletedDoneMsg) (tea.Model, tea.Cmd) {
+	stopSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: -1} }
+	if msg.Err != nil {
+		if m.pendingDeletedLink.OtherKey != "" {
+			m.detail.AppendLink(msg.IssueKey, m.pendingDeletedLink)
+		}
+		m.pendingDeletedLink = jira.IssueLink{}
+		toast := func() tea.Msg {
+			return ToastMsg{
+				Text:  "Remove link failed: " + msg.Err.Error(),
+				Level: ToastError,
+			}
+		}
+		return m, tea.Batch(stopSpinner, toast)
+	}
+	m.pendingDeletedLink = jira.IssueLink{}
+	toast := func() tea.Msg {
+		return ToastMsg{
+			Text:  "Removed link to " + msg.OtherKey,
 			Level: ToastInfo,
 		}
 	}
@@ -1899,7 +2160,7 @@ func (m Model) handleViewSelected(v panes.ViewKind) (tea.Model, tea.Cmd) {
 	switch v {
 	case panes.ViewMyTasks:
 		m.list.SetStrategy(grouping.ByEpicAndPriority{})
-	case panes.ViewWatching, panes.ViewReported, panes.ViewSearch:
+	case panes.ViewWatching, panes.ViewReported, panes.ViewSearch, panes.ViewSprint, panes.ViewMentions:
 		m.list.SetStrategy(grouping.ByStatus{})
 	case panes.ViewRecent:
 		// Recent uses a "by-key" arrangement that mimics insertion order;
@@ -2075,7 +2336,16 @@ func (m Model) activeOverlay() string {
 	if v := m.link.View(m.styles); v != "" {
 		return v
 	}
+	if v := m.linkRemove.View(m.styles); v != "" {
+		return v
+	}
 	if v := m.worklog.View(m.styles); v != "" {
+		return v
+	}
+	if v := m.description.View(m.styles); v != "" {
+		return v
+	}
+	if v := m.priority.View(m.styles); v != "" {
 		return v
 	}
 	return ""
@@ -2166,12 +2436,14 @@ func (m Model) renderTopBar() string {
 // tab; when active it appends a SEARCH cell so the user has a visual cue,
 // but it is not part of the `[`/`]` cycle.
 func (m Model) renderTabs() string {
-	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent}
+	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions}
 	labels := map[panes.ViewKind]string{
 		panes.ViewMyTasks:  "MY ISSUES",
 		panes.ViewWatching: "WATCHING",
 		panes.ViewReported: "REPORTED",
 		panes.ViewRecent:   "RECENT",
+		panes.ViewSprint:   "SPRINT",
+		panes.ViewMentions: "MENTIONS",
 		panes.ViewSearch:   "SEARCH",
 	}
 	cells := make([]string, 0, len(items)+1)
@@ -2379,7 +2651,7 @@ func (m Model) stepFocus(step int) (Model, tea.Cmd) {
 // only via the `/` hotkey and behaves as a transient mode rather than a
 // tab.
 func (m Model) nextView() panes.ViewKind {
-	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent}
+	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions}
 	for i, v := range items {
 		if v == m.view {
 			return items[(i+1)%len(items)]
@@ -2390,7 +2662,7 @@ func (m Model) nextView() panes.ViewKind {
 
 // prevView is nextView's mirror.
 func (m Model) prevView() panes.ViewKind {
-	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent}
+	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions}
 	for i, v := range items {
 		if v == m.view {
 			return items[(i-1+len(items))%len(items)]

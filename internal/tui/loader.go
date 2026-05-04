@@ -18,7 +18,9 @@ type AppLoader interface {
 	SearchUsers(ctx context.Context, query string) ([]jira.User, error)
 	AssignIssue(ctx context.Context, key, accountID string) error
 	UpdateFields(ctx context.Context, key string, fields map[string]any) error
+	UpdateDescription(ctx context.Context, key, body string) error
 	CreateLink(ctx context.Context, typeName, inwardKey, outwardKey string) error
+	DeleteLink(ctx context.Context, linkID string) error
 	AddWatcher(ctx context.Context, key, accountID string) error
 	RemoveWatcher(ctx context.Context, key, accountID string) error
 	AddWorklog(ctx context.Context, key, timeSpent, comment string) error
@@ -46,7 +48,9 @@ type jiraClient interface {
 	SearchUsers(ctx context.Context, query string) ([]jira.User, error)
 	AssignIssue(ctx context.Context, key, accountID string) error
 	UpdateIssue(ctx context.Context, key string, fields map[string]any) error
+	UpdateDescription(ctx context.Context, key, body string) error
 	CreateIssueLink(ctx context.Context, typeName, inwardKey, outwardKey string) error
+	DeleteIssueLink(ctx context.Context, linkID string) error
 	AddWatcher(ctx context.Context, key, accountID string) error
 	RemoveWatcher(ctx context.Context, key, accountID string) error
 	AddWorklog(ctx context.Context, key, timeSpent, comment string) error
@@ -73,9 +77,11 @@ func (l *clientLoader) LoadIssues(ctx context.Context, view panes.ViewKind, quer
 		return l.c.WatchingIssues(ctx)
 	case panes.ViewReported:
 		return l.c.ReportedIssues(ctx)
-	case panes.ViewRecent:
-		// Empty query means "no recently-viewed issues yet" — return an
-		// empty result without burning a Jira request.
+	case panes.ViewRecent, panes.ViewSprint, panes.ViewMentions:
+		// All three use a model-constructed JQL passed via the query
+		// argument. Empty query means "we couldn't construct one" (no
+		// recents yet, or the displayName isn't loaded yet) — return
+		// nothing rather than burning a Jira request.
 		if strings.TrimSpace(query) == "" {
 			return nil, nil
 		}
@@ -146,8 +152,16 @@ func (l *clientLoader) UpdateFields(ctx context.Context, key string, fields map[
 	return l.c.UpdateIssue(ctx, key, fields)
 }
 
+func (l *clientLoader) UpdateDescription(ctx context.Context, key, body string) error {
+	return l.c.UpdateDescription(ctx, key, body)
+}
+
 func (l *clientLoader) CreateLink(ctx context.Context, typeName, inwardKey, outwardKey string) error {
 	return l.c.CreateIssueLink(ctx, typeName, inwardKey, outwardKey)
+}
+
+func (l *clientLoader) DeleteLink(ctx context.Context, linkID string) error {
+	return l.c.DeleteIssueLink(ctx, linkID)
 }
 
 func (l *clientLoader) AddWatcher(ctx context.Context, key, accountID string) error {

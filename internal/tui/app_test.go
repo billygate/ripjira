@@ -441,7 +441,9 @@ func (l *recordingLoader) AddComment(context.Context, string, string) error     
 func (l *recordingLoader) SearchUsers(context.Context, string) ([]jira.User, error) { return nil, nil }
 func (l *recordingLoader) AssignIssue(context.Context, string, string) error        { return nil }
 func (l *recordingLoader) UpdateFields(context.Context, string, map[string]any) error { return nil }
+func (l *recordingLoader) UpdateDescription(context.Context, string, string) error     { return nil }
 func (l *recordingLoader) CreateLink(context.Context, string, string, string) error { return nil }
+func (l *recordingLoader) DeleteLink(context.Context, string) error                  { return nil }
 func (l *recordingLoader) AddWatcher(context.Context, string, string) error          { return nil }
 func (l *recordingLoader) RemoveWatcher(context.Context, string, string) error       { return nil }
 func (l *recordingLoader) AddWorklog(context.Context, string, string, string) error  { return nil }
@@ -910,8 +912,18 @@ func TestTabBar_NextTabCyclesForward(t *testing.T) {
 	}
 	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
 	m = mi.(Model)
+	if m.view != panes.ViewSprint {
+		t.Errorf("after ]]]] view = %v, want ViewSprint", m.view)
+	}
+	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	m = mi.(Model)
+	if m.view != panes.ViewMentions {
+		t.Errorf("after ]]]]] view = %v, want ViewMentions", m.view)
+	}
+	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	m = mi.(Model)
 	if m.view != panes.ViewMyTasks {
-		t.Errorf("wrap: after ]]]] view = %v, want ViewMyTasks", m.view)
+		t.Errorf("wrap: after ]]]]]] view = %v, want ViewMyTasks", m.view)
 	}
 }
 
@@ -920,13 +932,13 @@ func TestTabBar_PrevTabCyclesBackward(t *testing.T) {
 	m, _ = sendSize(m, 80, 24)
 	mi, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
 	m = mi.(Model)
-	if m.view != panes.ViewRecent {
-		t.Errorf("after [ view = %v, want ViewRecent", m.view)
+	if m.view != panes.ViewMentions {
+		t.Errorf("after [ view = %v, want ViewMentions", m.view)
 	}
 	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
 	m = mi.(Model)
-	if m.view != panes.ViewReported {
-		t.Errorf("after [[ view = %v, want ViewReported", m.view)
+	if m.view != panes.ViewSprint {
+		t.Errorf("after [[ view = %v, want ViewSprint", m.view)
 	}
 }
 

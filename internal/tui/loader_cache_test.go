@@ -51,9 +51,13 @@ func (l *countingLoader) AssignIssue(context.Context, string, string) error { re
 func (l *countingLoader) UpdateFields(context.Context, string, map[string]any) error {
 	return nil
 }
+func (l *countingLoader) UpdateDescription(context.Context, string, string) error {
+	return nil
+}
 func (l *countingLoader) CreateLink(context.Context, string, string, string) error {
 	return nil
 }
+func (l *countingLoader) DeleteLink(context.Context, string) error { return nil }
 func (l *countingLoader) AddWatcher(context.Context, string, string) error    { return nil }
 func (l *countingLoader) RemoveWatcher(context.Context, string, string) error { return nil }
 func (l *countingLoader) AddWorklog(context.Context, string, string, string) error {

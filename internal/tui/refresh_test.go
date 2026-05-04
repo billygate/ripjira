@@ -54,7 +54,9 @@ func (l *refreshLoader) AssignIssue(_ context.Context, _, _ string) error { retu
 func (l *refreshLoader) UpdateFields(_ context.Context, _ string, _ map[string]any) error {
 	return nil
 }
+func (l *refreshLoader) UpdateDescription(_ context.Context, _, _ string) error { return nil }
 func (l *refreshLoader) CreateLink(_ context.Context, _, _, _ string) error      { return nil }
+func (l *refreshLoader) DeleteLink(_ context.Context, _ string) error             { return nil }
 func (l *refreshLoader) AddWatcher(_ context.Context, _, _ string) error          { return nil }
 func (l *refreshLoader) RemoveWatcher(_ context.Context, _, _ string) error       { return nil }
 func (l *refreshLoader) AddWorklog(_ context.Context, _, _, _ string) error       { return nil }
