@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -132,6 +133,7 @@ func TestSave_RoundTripAndPermissions(t *testing.T) {
 		AutoRefreshSeconds: 30,
 		Theme:              ThemeTokyoNight,
 		Icons:              IconsUnicode,
+		EpicIssueTypes:     []string{"Epic", "Epic Feature"},
 	}
 	if err := Save(path, cfg); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -147,7 +149,7 @@ func TestSave_RoundTripAndPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load after Save: %v", err)
 	}
-	if *got != *cfg {
+	if !reflect.DeepEqual(got, cfg) {
 		t.Errorf("round-trip differs:\n got %#v\nwant %#v", got, cfg)
 	}
 }
@@ -168,6 +170,54 @@ func TestValidate_NegativeAutoRefresh(t *testing.T) {
 	cfg.AutoRefreshSeconds = -1
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for negative auto_refresh_seconds")
+	}
+}
+
+func TestConfig_EpicIssueTypesDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	body := []byte("base_url: https://x.atlassian.net\nemail: a@b.c\ndefault_grouping: status\ntheme: nord\nicons: ascii\n")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	want := []string{"Epic", "Epic Feature"}
+	if !reflect.DeepEqual(cfg.EpicIssueTypes, want) {
+		t.Fatalf("EpicIssueTypes = %#v, want %#v", cfg.EpicIssueTypes, want)
+	}
+}
+
+func TestConfig_EpicIssueTypesOverride(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	body := []byte("base_url: https://x.atlassian.net\nemail: a@b.c\ndefault_grouping: status\ntheme: nord\nicons: ascii\nepic_issue_types: [Theme, Initiative]\n")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	want := []string{"Theme", "Initiative"}
+	if !reflect.DeepEqual(cfg.EpicIssueTypes, want) {
+		t.Fatalf("EpicIssueTypes = %#v, want %#v", cfg.EpicIssueTypes, want)
+	}
+}
+
+func TestConfig_EpicGroupingValid(t *testing.T) {
+	cfg := Defaults()
+	cfg.BaseURL = "https://x.atlassian.net"
+	cfg.Email = "a@b.c"
+	cfg.DefaultGrouping = "epic"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("epic should be a valid grouping: %v", err)
+	}
+	cfg.DefaultGrouping = "parent"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("parent should be a valid grouping: %v", err)
 	}
 }
 

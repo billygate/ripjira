@@ -19,8 +19,9 @@ type Config struct {
 	DefaultProject     string `yaml:"default_project,omitempty"`
 	DefaultGrouping    string `yaml:"default_grouping"`
 	AutoRefreshSeconds int    `yaml:"auto_refresh_seconds"`
-	Theme              string `yaml:"theme"`
-	Icons              string `yaml:"icons"`
+	Theme              string   `yaml:"theme"`
+	Icons              string   `yaml:"icons"`
+	EpicIssueTypes     []string `yaml:"epic_issue_types,omitempty"`
 }
 
 // ErrPermissionsTooWide is returned by Load when the config file mode is wider
@@ -32,6 +33,8 @@ var ErrPermissionsTooWide = errors.New("config file permissions wider than 0600"
 const (
 	GroupingStatus   = "status"
 	GroupingPriority = "priority"
+	GroupingEpic     = "epic"
+	GroupingParent   = "parent"
 
 	ThemeTokyoNight = "tokyonight"
 	ThemeCatppuccin = "catppuccin"
@@ -44,7 +47,12 @@ const (
 )
 
 var (
-	validGroupings = map[string]bool{GroupingStatus: true, GroupingPriority: true}
+	validGroupings = map[string]bool{
+		GroupingStatus:   true,
+		GroupingPriority: true,
+		GroupingEpic:     true,
+		GroupingParent:   true,
+	}
 	validThemes    = map[string]bool{
 		ThemeTokyoNight: true,
 		ThemeCatppuccin: true,
@@ -64,6 +72,7 @@ func Defaults() *Config {
 		AutoRefreshSeconds: 60,
 		Theme:              ThemeTokyoNight,
 		Icons:              IconsUnicode,
+		EpicIssueTypes:     []string{"Epic", "Epic Feature"},
 	}
 }
 
@@ -141,7 +150,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("email is not valid: %q", c.Email)
 	}
 	if !validGroupings[c.DefaultGrouping] {
-		return fmt.Errorf("default_grouping %q must be one of status|priority", c.DefaultGrouping)
+		return fmt.Errorf("default_grouping %q must be one of status|priority|epic|parent", c.DefaultGrouping)
 	}
 	if !validThemes[c.Theme] {
 		return fmt.Errorf("theme %q is unknown", c.Theme)
@@ -165,5 +174,8 @@ func applyDefaults(c *Config) {
 	}
 	if c.Icons == "" {
 		c.Icons = d.Icons
+	}
+	if len(c.EpicIssueTypes) == 0 {
+		c.EpicIssueTypes = d.EpicIssueTypes
 	}
 }
