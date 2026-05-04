@@ -78,6 +78,7 @@ type Model struct {
 	description   overlays.Description
 	priority      overlays.Priority
 	epicPicker    overlays.Epic
+	structPicker  overlays.Structures
 
 	list   panes.List
 	detail panes.Detail
@@ -142,7 +143,7 @@ func (m Model) canArmQuit() bool {
 		m.edit.Visible() || m.favorites.Visible() || m.link.Visible() ||
 		m.linkRemove.Visible() || m.worklog.Visible() || m.worklogRemove.Visible() ||
 		m.description.Visible() || m.priority.Visible() ||
-		m.epicPicker.Visible() {
+		m.epicPicker.Visible() || m.structPicker.Visible() {
 		return false
 	}
 	if m.list.SearchEditing() || m.list.LocalFilterEditing() {
@@ -262,7 +263,8 @@ func New(p themes.Palette, opts ...Option) Model {
 		worklogRemove: overlays.NewRemoveWorklog(km.CloseOverlay),
 		description:   overlays.NewDescription(km.CloseOverlay),
 		priority:    overlays.NewPriority(km.CloseOverlay),
-		epicPicker:  overlays.NewEpic(),
+		epicPicker:   overlays.NewEpic(),
+		structPicker: overlays.NewStructures(km.CloseOverlay),
 		list:       panes.New(st, grouping.ByEpicAndPriority{}, 1, 1),
 		detail:     panes.NewDetail(st, panesNoopLoader{}, 1, 1),
 		browser:    OSOpener{},
@@ -612,7 +614,9 @@ func (m *Model) feedList(issues []jira.Issue) {
 		}
 		secs = append(secs, panes.Section{Title: a.Title, ReadOnly: st.IsReadOnly(), Issues: real})
 	}
-	m.list.SetIssues(nil)
+	// Keep raw issues populated so cycling structures can re-apply without
+	// re-fetching; sections take precedence in the list-pane rebuild.
+	m.list.SetIssues(issues)
 	m.list.SetSections(secs)
 }
 
@@ -640,6 +644,67 @@ func (m *Model) activeStructure() (structure.Structure, bool) {
 		return all[0], true
 	}
 	return structure.Structure{}, false
+}
+
+// openStructurePicker pops the picker overlay populated with the active
+// project's built-ins + user structures. No-op when defaultProject is unset.
+func (m Model) openStructurePicker() (tea.Model, tea.Cmd) {
+	pk := m.defaultProject
+	if pk == "" {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "structures: set default project to use this picker", Level: ToastInfo}
+		}
+	}
+	all, err := m.loadStructuresFor(pk)
+	if err != nil {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "structures: " + err.Error(), Level: ToastError}
+		}
+	}
+	entries := make([]overlays.StructureEntry, 0, len(all))
+	for _, s := range all {
+		entries = append(entries, overlays.StructureEntry{
+			ID: s.ID, Name: s.Name,
+			ReadOnly: s.IsReadOnly(),
+			Builtin:  structure.IsBuiltinID(s.ID),
+		})
+	}
+	selID := m.currentStructID[pk]
+	if selID == "" {
+		selID = structure.BuiltinDefaultID
+	}
+	m.structPicker = m.structPicker.Show(entries, selID)
+	return m, nil
+}
+
+// cycleStructure rotates the active structure by step (+1/-1) within the
+// current project's list. No-op outside the STRUCTURES tab.
+func (m Model) cycleStructure(step int) (tea.Model, tea.Cmd) {
+	if m.view != panes.ViewStructures {
+		return m, nil
+	}
+	pk := m.defaultProject
+	if pk == "" {
+		return m, nil
+	}
+	all, err := m.loadStructuresFor(pk)
+	if err != nil || len(all) == 0 {
+		return m, nil
+	}
+	curID := m.currentStructID[pk]
+	idx := 0
+	for i, s := range all {
+		if s.ID == curID {
+			idx = i
+			break
+		}
+	}
+	idx = (idx + step + len(all)) % len(all)
+	newID := all[idx].ID
+	m.currentStructID[pk] = newID
+	m.persistLastStructure(pk, newID)
+	m.feedList(m.list.Issues())
+	return m, nil
 }
 
 // persistLastStructure writes the structure id for project to state.json
@@ -786,7 +851,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case structureChangedMsg:
 		delete(m.loadedStructs, msg.Project)
+		// Re-apply if we're currently viewing structures for that project.
+		if m.view == panes.ViewStructures && m.defaultProject == msg.Project {
+			m.feedList(m.list.Issues())
+		}
 		return m, m.watchStructuresNextCmd()
+	case overlays.StructureSelectedMsg:
+		pk := m.defaultProject
+		if pk != "" {
+			m.currentStructID[pk] = msg.ID
+			m.persistLastStructure(pk, msg.ID)
+		}
+		m.feedList(m.list.Issues())
+		return m, nil
 	case accountIDFetchedMsg:
 		stopSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: -1} }
 		if msg.Err != nil {
@@ -1139,6 +1216,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.epicPicker, cmd = m.epicPicker.Update(msg)
 		return m, cmd
 	}
+	if m.structPicker.Visible() {
+		var cmd tea.Cmd
+		m.structPicker, cmd = m.structPicker.Update(msg)
+		return m, cmd
+	}
 	// While the list pane's search input is being edited, the input must
 	// own the keypress — otherwise typing "n", "s", etc. would trigger
 	// global hotkeys (open create, open status…) instead of going into
@@ -1236,6 +1318,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openDescriptionOverlay()
 	case key.Matches(msg, m.keymap.EditEpic):
 		return m.openEpicPicker()
+	case key.Matches(msg, m.keymap.OpenStructures):
+		return m.openStructurePicker()
+	case key.Matches(msg, m.keymap.CycleStructureNext):
+		return m.cycleStructure(+1)
+	case key.Matches(msg, m.keymap.CycleStructurePrev):
+		return m.cycleStructure(-1)
 	case key.Matches(msg, m.keymap.AddLink):
 		return m.openLinkOverlay()
 	case key.Matches(msg, m.keymap.RemoveLink):
@@ -2774,6 +2862,9 @@ func (m Model) activeOverlay() string {
 		return v
 	}
 	if v := m.epicPicker.View(m.styles); v != "" {
+		return v
+	}
+	if v := m.structPicker.View(m.styles); v != "" {
 		return v
 	}
 	return ""
