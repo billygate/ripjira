@@ -3014,11 +3014,10 @@ func (m Model) renderPrefetchIndicator() string {
 }
 
 func (m Model) renderHintBar() string {
-	bindings := m.keymap.ShortHelp()
-	parts := make([]string, 0, len(bindings))
-	for _, b := range bindings {
-		h := b.Help()
-		parts = append(parts, h.Key+" "+h.Desc)
+	parts := []string{
+		"}/{ top tab",
+		"]/[ sub-tab",
+		"? help",
 	}
 	return m.styles.HintBar.Width(m.width).Render(strings.Join(parts, "  "))
 }

@@ -236,9 +236,7 @@ func DefaultKeymap() Keymap {
 // ShortHelp returns the compact set of bindings shown in the bottom hint bar.
 // Order matches the spec mock-up.
 func (k Keymap) ShortHelp() []key.Binding {
-	return []key.Binding{
-		k.Down, k.CycleFocusForward, k.Open, k.Status, k.Comment, k.New,
-	}
+	return []key.Binding{k.NextTab, k.NextSubView, k.Help}
 }
 
 // FullHelp returns the full keymap grouped into columns, used by the help

@@ -133,6 +133,23 @@ any personal data (real emails, names tied to internal companies,
 absolute home-directory paths) in test fixtures or docs: scrub
 before tagging.
 
+## Hotkeys
+
+When you add, remove, or rebind a key, update **all three places** in the
+same change:
+
+1. `internal/tui/keymap.go` — the `Keymap` struct, the `DefaultKeymap()`
+   constructor, `All()`, and `FullHelp()` (the latter two power the help
+   overlay test that asserts every binding is documented).
+2. `?` Help overlay — automatic via `FullHelp()`/`FullHelpTitles()`, but
+   verify the column titles still make sense.
+3. `README.md` Keymap table — user-facing reference; outdated entries here
+   are how users discover the binding is wrong.
+
+The bottom hint bar intentionally only shows the tab navigation keys
+(`}`/`{`, `]`/`[`) and `?`; do not expand it. All other bindings live in
+the help overlay.
+
 ## Commit messages
 
 Keep commit messages plain and human. One short subject line that
