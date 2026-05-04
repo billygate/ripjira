@@ -153,6 +153,8 @@ type Issue struct {
 	Labels      []string
 	DueDate     string // YYYY-MM-DD; empty when not set
 	Description string // markdown converted from renderedFields HTML
+	ParentKey     string // empty when issue has no parent
+	ParentSummary string // empty when issue has no parent
 	Comments    []Comment
 	Worklogs    []Worklog
 	Links       []IssueLink

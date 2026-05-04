@@ -819,3 +819,32 @@ func TestIssueURL_UsesBaseURL(t *testing.T) {
 		t.Fatalf("issue URL path: %q", u.Path)
 	}
 }
+
+func TestDtoToIssue_PopulatesParent(t *testing.T) {
+	body := readFixture(t, "issue_with_parent.json")
+	var dto issueDTO
+	if err := json.Unmarshal(body, &dto); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	defer srv.Close()
+	c := newTestClient(t, srv, "a@b.com", "tok")
+	got := c.dtoToIssue(dto)
+	if got.ParentKey != "BILLING-10319" {
+		t.Errorf("ParentKey = %q, want BILLING-10319", got.ParentKey)
+	}
+	if got.ParentSummary != "Setup deploy" {
+		t.Errorf("ParentSummary = %q, want Setup deploy", got.ParentSummary)
+	}
+}
+
+func TestDtoToIssue_NoParent(t *testing.T) {
+	dto := issueDTO{Key: "BILLING-1"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	defer srv.Close()
+	c := newTestClient(t, srv, "a@b.com", "tok")
+	got := c.dtoToIssue(dto)
+	if got.ParentKey != "" || got.ParentSummary != "" {
+		t.Errorf("expected empty parent, got key=%q sum=%q", got.ParentKey, got.ParentSummary)
+	}
+}

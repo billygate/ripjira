@@ -121,6 +121,15 @@ type issueFieldsDTO struct {
 	Worklog    *struct {
 		Worklogs []worklogDTO `json:"worklogs"`
 	} `json:"worklog"`
+	Parent *parentDTO `json:"parent"`
+}
+
+type parentDTO struct {
+	Key    string `json:"key"`
+	Fields struct {
+		Summary   string        `json:"summary"`
+		IssueType *issueTypeDTO `json:"issuetype"`
+	} `json:"fields"`
 }
 
 // worklogDTO is the wire form of a single worklog entry returned inline
@@ -222,6 +231,10 @@ func (c *Client) dtoToIssue(d issueDTO) Issue {
 		Created:  created,
 		Updated:  updated,
 		URL:      c.browseURL(d.Key),
+	}
+	if d.Fields.Parent != nil {
+		is.ParentKey = d.Fields.Parent.Key
+		is.ParentSummary = d.Fields.Parent.Fields.Summary
 	}
 	if len(d.Fields.Subtasks) > 0 {
 		subs := make([]SubtaskRef, 0, len(d.Fields.Subtasks))
@@ -349,7 +362,7 @@ func (c *Client) Myself(ctx context.Context) (User, error) {
 // myIssuesFields lists the fields requested from the new search/jql endpoint.
 // The endpoint returns no fields by default, so they must be enumerated
 // (or `*all` requested) for summary/status/priority/assignee to be populated.
-const myIssuesFields = "summary,status,priority,issuetype,assignee,reporter,updated"
+const myIssuesFields = "summary,status,priority,issuetype,assignee,reporter,updated,parent"
 
 // Search runs an arbitrary JQL query against /rest/api/3/search/jql,
 // pages through nextPageToken, and requests the explicit fields list
