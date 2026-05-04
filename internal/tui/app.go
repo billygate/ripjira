@@ -14,10 +14,12 @@ import (
 
 	"github.com/billygate/ripjira/internal/jira"
 	"github.com/billygate/ripjira/internal/state"
+	"github.com/billygate/ripjira/internal/structure"
 	"github.com/billygate/ripjira/internal/tui/gfx"
 	"github.com/billygate/ripjira/internal/tui/grouping"
 	"github.com/billygate/ripjira/internal/tui/overlays"
 	"github.com/billygate/ripjira/internal/tui/panes"
+	"github.com/billygate/ripjira/internal/tui/structureadapter"
 	"github.com/billygate/ripjira/internal/tui/styles"
 	"github.com/billygate/ripjira/internal/tui/themes"
 )
@@ -76,6 +78,7 @@ type Model struct {
 	description   overlays.Description
 	priority      overlays.Priority
 	epicPicker    overlays.Epic
+	structPicker  overlays.Structures
 
 	list   panes.List
 	detail panes.Detail
@@ -118,6 +121,16 @@ type Model struct {
 	prefetchCancel context.CancelFunc
 
 	pendingQuitUntil time.Time
+
+	structures      *structure.Store
+	structureEvents <-chan structure.Event
+	currentStructID map[string]string
+	loadedStructs   map[string][]structure.Structure
+
+	// lastSubView remembers the last sub-view chosen under each top tab so
+	// `]`/`[` returns to the user's previous scope rather than always landing
+	// on the first sub.
+	lastSubView map[panes.TopTabKind]panes.ViewKind
 }
 
 // QuitArmed reports whether the user has pressed Esc once on the main view
@@ -135,7 +148,7 @@ func (m Model) canArmQuit() bool {
 		m.edit.Visible() || m.favorites.Visible() || m.link.Visible() ||
 		m.linkRemove.Visible() || m.worklog.Visible() || m.worklogRemove.Visible() ||
 		m.description.Visible() || m.priority.Visible() ||
-		m.epicPicker.Visible() {
+		m.epicPicker.Visible() || m.structPicker.Visible() {
 		return false
 	}
 	if m.list.SearchEditing() || m.list.LocalFilterEditing() {
@@ -255,7 +268,8 @@ func New(p themes.Palette, opts ...Option) Model {
 		worklogRemove: overlays.NewRemoveWorklog(km.CloseOverlay),
 		description:   overlays.NewDescription(km.CloseOverlay),
 		priority:    overlays.NewPriority(km.CloseOverlay),
-		epicPicker:  overlays.NewEpic(),
+		epicPicker:   overlays.NewEpic(),
+		structPicker: overlays.NewStructures(km.CloseOverlay),
 		list:       panes.New(st, grouping.ByEpicAndPriority{}, 1, 1),
 		detail:     panes.NewDetail(st, panesNoopLoader{}, 1, 1),
 		browser:    OSOpener{},
@@ -269,9 +283,14 @@ func New(p themes.Palette, opts ...Option) Model {
 	if m.loader != nil {
 		m.detail = panes.NewDetail(st, m.loader, 1, 1)
 	}
+	// initialIssues are placed via feedList in Init/handleListFetched once the
+	// view is settled; here we just store them on m.list as the flat fallback.
 	if len(m.initialIssues) > 0 {
 		m.list.SetIssues(m.initialIssues)
 	}
+	m.currentStructID = map[string]string{}
+	m.loadedStructs = map[string][]structure.Structure{}
+	m.lastSubView = map[panes.TopTabKind]panes.ViewKind{}
 	if m.statePath != "" {
 		if st, err := state.Load(m.statePath); err == nil {
 			if st.Grouping != "" {
@@ -287,9 +306,30 @@ func New(p themes.Palette, opts ...Option) Model {
 			}
 			m.list.SetSort(grouping.SortByName(sortName), desc)
 			m.recentKeys = append([]string(nil), st.RecentlyViewed...)
+			for k, v := range st.LastStructure {
+				m.currentStructID[k] = v
+			}
+			for k, v := range st.LastSubView {
+				m.lastSubView[panes.TopTabKind(k)] = panes.ViewKind(v)
+			}
 		}
 	}
 	return m
+}
+
+// WithStructures wires a Store and a hot-reload watcher into the model. Call
+// from cmd/ripjira; tests skip this option so they don't spawn an fsnotify
+// goroutine. ctx scopes the watcher; cancel it on app shutdown.
+func WithStructures(ctx context.Context, store *structure.Store) Option {
+	return func(m *Model) {
+		if store == nil {
+			return
+		}
+		m.structures = store
+		if events, err := structure.Watch(ctx, store.Dir()); err == nil {
+			m.structureEvents = events
+		}
+	}
 }
 
 // maxRecentKeys caps the recently-viewed list. Twenty is a comfortable
@@ -545,10 +585,176 @@ func (m Model) Init() tea.Cmd {
 	if tick := m.scheduleAutoRefresh(); tick != nil {
 		cmds = append(cmds, tick)
 	}
+	if cmd := m.watchStructuresNextCmd(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	if len(cmds) == 0 {
 		return nil
 	}
 	return tea.Batch(cmds...)
+}
+
+// feedList routes issues into the list pane: in sectioned mode (active
+// structure on the STRUCTURES tab) it builds sections via structure.Apply;
+// otherwise it falls through to SetIssues. Always called before rendering
+// so the two modes never coexist.
+func (m *Model) feedList(issues []jira.Issue) {
+	if m.view != panes.ViewStructures {
+		m.list.SetSections(nil)
+		m.list.SetIssues(issues)
+		return
+	}
+	st, ok := m.activeStructure()
+	if !ok {
+		m.list.SetSections(nil)
+		m.list.SetIssues(issues)
+		return
+	}
+	adapters := make([]structure.Issue, len(issues))
+	for i := range issues {
+		adapters[i] = structureadapter.New(issues[i])
+	}
+	applied := structure.Apply(adapters, &st)
+	secs := make([]panes.Section, 0, len(applied))
+	for _, a := range applied {
+		real := make([]jira.Issue, len(a.Issues))
+		for i, x := range a.Issues {
+			real[i] = x.(structureadapter.Adapter).Issue()
+		}
+		secs = append(secs, panes.Section{Title: a.Title, ReadOnly: st.IsReadOnly(), Issues: real})
+	}
+	// Keep raw issues populated so cycling structures can re-apply without
+	// re-fetching; sections take precedence in the list-pane rebuild.
+	m.list.SetIssues(issues)
+	m.list.SetSections(secs)
+}
+
+// activeStructure resolves the currently-selected structure for the default
+// project. Falls back to the Default built-in when no selection exists.
+func (m *Model) activeStructure() (structure.Structure, bool) {
+	pk := m.defaultProject
+	if pk == "" {
+		return structure.Structure{}, false
+	}
+	id := m.currentStructID[pk]
+	if id == "" {
+		id = structure.BuiltinDefaultID
+	}
+	all, err := m.loadStructuresFor(pk)
+	if err != nil {
+		return structure.Structure{}, false
+	}
+	for i := range all {
+		if all[i].ID == id {
+			return all[i], true
+		}
+	}
+	if len(all) > 0 {
+		return all[0], true
+	}
+	return structure.Structure{}, false
+}
+
+// openStructurePicker pops the picker overlay populated with the active
+// project's built-ins + user structures. No-op when defaultProject is unset.
+func (m Model) openStructurePicker() (tea.Model, tea.Cmd) {
+	pk := m.defaultProject
+	if pk == "" {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "structures: set default project to use this picker", Level: ToastInfo}
+		}
+	}
+	all, err := m.loadStructuresFor(pk)
+	if err != nil {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "structures: " + err.Error(), Level: ToastError}
+		}
+	}
+	entries := make([]overlays.StructureEntry, 0, len(all))
+	for _, s := range all {
+		entries = append(entries, overlays.StructureEntry{
+			ID: s.ID, Name: s.Name,
+			ReadOnly: s.IsReadOnly(),
+			Builtin:  structure.IsBuiltinID(s.ID),
+		})
+	}
+	selID := m.currentStructID[pk]
+	if selID == "" {
+		selID = structure.BuiltinDefaultID
+	}
+	m.structPicker = m.structPicker.Show(entries, selID)
+	return m, nil
+}
+
+
+// persistLastSubView writes the active sub-view under top to state.json so
+// the next session restores the user's scope. Async; no-op without a state
+// path.
+func (m *Model) persistLastSubView(top panes.TopTabKind, v panes.ViewKind) {
+	if m.statePath == "" {
+		return
+	}
+	path := m.statePath
+	go func() {
+		_ = state.Mutate(path, func(s *state.State) {
+			if s.LastSubView == nil {
+				s.LastSubView = map[int]int{}
+			}
+			s.LastSubView[int(top)] = int(v)
+		})
+	}()
+}
+
+// persistLastStructure writes the structure id for project to state.json
+// asynchronously. No-op when state path is unset.
+func (m *Model) persistLastStructure(project, id string) {
+	if m.statePath == "" || project == "" {
+		return
+	}
+	path := m.statePath
+	go func() {
+		_ = state.Mutate(path, func(s *state.State) {
+			if s.LastStructure == nil {
+				s.LastStructure = map[string]string{}
+			}
+			s.LastStructure[project] = id
+		})
+	}()
+}
+
+// loadStructuresFor returns built-ins + user structures for project, caching
+// the result. The watcher invalidates the cache on file changes.
+func (m *Model) loadStructuresFor(project string) ([]structure.Structure, error) {
+	if v, ok := m.loadedStructs[project]; ok {
+		return v, nil
+	}
+	if m.structures == nil {
+		v := structure.Builtins(project)
+		m.loadedStructs[project] = v
+		return v, nil
+	}
+	v, err := m.structures.Load(project)
+	if err != nil {
+		return nil, err
+	}
+	m.loadedStructs[project] = v
+	return v, nil
+}
+
+// watchStructuresNextCmd blocks for the next watcher event and translates it
+// into structureChangedMsg. Re-armed by the Update handler after each event.
+func (m Model) watchStructuresNextCmd() tea.Cmd {
+	if m.structureEvents == nil {
+		return nil
+	}
+	events := m.structureEvents
+	return func() tea.Msg {
+		ev, ok := <-events
+		if !ok {
+			return nil
+		}
+		return structureChangedMsg{Project: ev.ProjectKey}
+	}
 }
 
 // dispatchListRefresh cancels any in-flight list fetch, bumps the generation
@@ -641,6 +847,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Adjust(msg.Delta)
 		return m, cmd
+	case structureChangedMsg:
+		delete(m.loadedStructs, msg.Project)
+		// Re-apply if we're currently viewing structures for that project.
+		if m.view == panes.ViewStructures && m.defaultProject == msg.Project {
+			m.feedList(m.list.Issues())
+		}
+		return m, m.watchStructuresNextCmd()
+	case overlays.StructureSelectedMsg:
+		pk := m.defaultProject
+		if pk != "" {
+			m.currentStructID[pk] = msg.ID
+			m.persistLastStructure(pk, msg.ID)
+		}
+		m.feedList(m.list.Issues())
+		return m, nil
 	case accountIDFetchedMsg:
 		stopSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: -1} }
 		if msg.Err != nil {
@@ -660,7 +881,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil || len(msg.Issues) == 0 {
 			return m, nil
 		}
-		m.list.SetIssues(msg.Issues)
+		m.feedList(msg.Issues)
 		prefetchCmd := m.startPrefetch(msg.Issues)
 		return m, tea.Batch(prefetchCmd, m.syncDetailFromList())
 	case listFetchedMsg:
@@ -993,6 +1214,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.epicPicker, cmd = m.epicPicker.Update(msg)
 		return m, cmd
 	}
+	if m.structPicker.Visible() {
+		var cmd tea.Cmd
+		m.structPicker, cmd = m.structPicker.Update(msg)
+		return m, cmd
+	}
 	// While the list pane's search input is being edited, the input must
 	// own the keypress — otherwise typing "n", "s", etc. would trigger
 	// global hotkeys (open create, open status…) instead of going into
@@ -1090,6 +1316,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openDescriptionOverlay()
 	case key.Matches(msg, m.keymap.EditEpic):
 		return m.openEpicPicker()
+	case key.Matches(msg, m.keymap.OpenStructures):
+		return m.openStructurePicker()
+	case key.Matches(msg, m.keymap.NextSubView):
+		return m.handleViewSelected(m.nextSubView())
+	case key.Matches(msg, m.keymap.PrevSubView):
+		return m.handleViewSelected(m.prevSubView())
 	case key.Matches(msg, m.keymap.AddLink):
 		return m.openLinkOverlay()
 	case key.Matches(msg, m.keymap.RemoveLink):
@@ -2423,6 +2655,8 @@ func (m Model) handleViewSelected(v panes.ViewKind) (tea.Model, tea.Cmd) {
 		m.searchQuery = ""
 	}
 	m.view = v
+	m.lastSubView[panes.TopGroup(v)] = v
+	m.persistLastSubView(panes.TopGroup(v), v)
 	switch v {
 	case panes.ViewMyTasks:
 		m.list.SetStrategy(grouping.ByEpicAndPriority{})
@@ -2433,6 +2667,16 @@ func (m Model) handleViewSelected(v panes.ViewKind) (tea.Model, tea.Cmd) {
 		// any grouping will fight that. ByStatus is a tolerable default —
 		// the user can switch via the options overlay if they want.
 		m.list.SetStrategy(grouping.ByStatus{})
+	case panes.ViewStructures:
+		// Sectioned mode draws its own headers via the chosen structure;
+		// keep a tolerable default within-section grouping.
+		m.list.SetStrategy(grouping.ByStatus{})
+		if m.defaultProject != "" {
+			if _, ok := m.currentStructID[m.defaultProject]; !ok {
+				m.currentStructID[m.defaultProject] = structure.BuiltinDefaultID
+				m.persistLastStructure(m.defaultProject, structure.BuiltinDefaultID)
+			}
+		}
 	}
 	m.detail.SetIssue(nil)
 	m.selectedKey = ""
@@ -2468,7 +2712,7 @@ func (m Model) handleListFetched(msg listFetchedMsg) (tea.Model, tea.Cmd) {
 	if m.view == panes.ViewRecent {
 		issues = m.reorderByRecent(issues)
 	}
-	m.list.SetIssues(issues)
+	m.feedList(issues)
 	if m.view == panes.ViewMyTasks && m.cachePath != "" && m.accountID != "" {
 		path, account := m.cachePath, m.accountID
 		toCache := issues
@@ -2557,7 +2801,12 @@ func (m Model) View() string {
 		)
 	}
 
-	parts := []string{topBar, tabBar, body}
+	subTabBar := m.renderSubTabs()
+	parts := []string{topBar}
+	if subTabBar != "" {
+		parts = append(parts, subTabBar)
+	}
+	parts = append(parts, tabBar, body)
 	if toasts != "" {
 		parts = append(parts, toasts)
 	}
@@ -2620,6 +2869,9 @@ func (m Model) activeOverlay() string {
 	if v := m.epicPicker.View(m.styles); v != "" {
 		return v
 	}
+	if v := m.structPicker.View(m.styles); v != "" {
+		return v
+	}
 	return ""
 }
 
@@ -2674,6 +2926,9 @@ func (m Model) paneDims() (listW, detailW, previewW, contentHeight int) {
 	tabBar := m.renderTabBar()
 	hintBar := m.renderHintBar()
 	overhead := lipgloss.Height(topBar) + lipgloss.Height(tabBar) + lipgloss.Height(hintBar)
+	if sub := m.renderSubTabs(); sub != "" {
+		overhead += lipgloss.Height(sub)
+	}
 	if v := m.toasts.View(m.styles); v != "" {
 		overhead += lipgloss.Height(v)
 	}
@@ -2708,29 +2963,37 @@ func (m Model) renderTopBar() string {
 // tab; when active it appends a SEARCH cell so the user has a visual cue,
 // but it is not part of the `[`/`]` cycle.
 func (m Model) renderTabs() string {
-	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions}
-	labels := map[panes.ViewKind]string{
-		panes.ViewMyTasks:  "MY ISSUES",
-		panes.ViewWatching: "WATCHING",
-		panes.ViewReported: "REPORTED",
-		panes.ViewRecent:   "RECENT",
-		panes.ViewSprint:   "SPRINT",
-		panes.ViewMentions: "MENTIONS",
-		panes.ViewSearch:   "SEARCH",
+	active := panes.TopGroup(m.view)
+	cells := make([]string, 0, len(panes.AllTopTabs()))
+	for _, t := range panes.AllTopTabs() {
+		label := t.String()
+		if t == active {
+			cells = append(cells, m.styles.ActiveTab.Render(label))
+		} else {
+			cells = append(cells, m.styles.InactiveTab.Render(label))
+		}
 	}
-	cells := make([]string, 0, len(items)+1)
-	for _, v := range items {
-		label := labels[v]
+	return lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+}
+
+// renderSubTabs returns the second row of tabs scoped to the active top tab.
+// Returns "" when the top tab has only one sub-view (no row to render).
+func (m Model) renderSubTabs() string {
+	subs := panes.SubViews(panes.TopGroup(m.view))
+	if len(subs) <= 1 {
+		return ""
+	}
+	cells := make([]string, 0, len(subs))
+	for _, v := range subs {
+		label := panes.SubLabel(v)
 		if v == m.view {
 			cells = append(cells, m.styles.ActiveTab.Render(label))
 		} else {
 			cells = append(cells, m.styles.InactiveTab.Render(label))
 		}
 	}
-	if m.view == panes.ViewSearch {
-		cells = append(cells, m.styles.ActiveTab.Render(labels[panes.ViewSearch]))
-	}
-	return lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+	row := lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+	return m.styles.Muted.Render("  ") + row
 }
 
 // renderPrefetchIndicator returns a static "▒ caching N/M" chip when the
@@ -2751,11 +3014,11 @@ func (m Model) renderPrefetchIndicator() string {
 }
 
 func (m Model) renderHintBar() string {
-	bindings := m.keymap.ShortHelp()
-	parts := make([]string, 0, len(bindings))
-	for _, b := range bindings {
-		h := b.Help()
-		parts = append(parts, h.Key+" "+h.Desc)
+	parts := []string{
+		"↑/↓ nav",
+		"}/{ top tab",
+		"]/[ sub-tab",
+		"? help",
 	}
 	return m.styles.HintBar.Width(m.width).Render(strings.Join(parts, "  "))
 }
@@ -2923,24 +3186,57 @@ func (m Model) stepFocus(step int) (Model, tea.Cmd) {
 // only via the `/` hotkey and behaves as a transient mode rather than a
 // tab.
 func (m Model) nextView() panes.ViewKind {
-	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions}
-	for i, v := range items {
-		if v == m.view {
-			return items[(i+1)%len(items)]
-		}
-	}
-	return panes.ViewMyTasks
+	return m.cycleTopTab(+1)
 }
 
 // prevView is nextView's mirror.
 func (m Model) prevView() panes.ViewKind {
-	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions}
-	for i, v := range items {
-		if v == m.view {
-			return items[(i-1+len(items))%len(items)]
+	return m.cycleTopTab(-1)
+}
+
+// cycleTopTab advances the active top-level tab by step, returning the
+// preferred sub-view of the new top: the persisted last sub-view if any,
+// else the first sub.
+func (m Model) cycleTopTab(step int) panes.ViewKind {
+	tops := panes.AllTopTabs()
+	cur := panes.TopGroup(m.view)
+	idx := 0
+	for i, t := range tops {
+		if t == cur {
+			idx = i
+			break
 		}
 	}
-	return panes.ViewMyTasks
+	idx = (idx + step + len(tops)) % len(tops)
+	target := tops[idx]
+	if v, ok := m.lastSubView[target]; ok {
+		return v
+	}
+	subs := panes.SubViews(target)
+	if len(subs) == 0 {
+		return panes.ViewMyTasks
+	}
+	return subs[0]
+}
+
+// nextSubView / prevSubView cycle within the active top tab's sub-views.
+// Returns m.view unchanged when the top has a single sub.
+func (m Model) nextSubView() panes.ViewKind { return m.cycleSubView(+1) }
+func (m Model) prevSubView() panes.ViewKind { return m.cycleSubView(-1) }
+
+func (m Model) cycleSubView(step int) panes.ViewKind {
+	subs := panes.SubViews(panes.TopGroup(m.view))
+	if len(subs) <= 1 {
+		return m.view
+	}
+	idx := 0
+	for i, v := range subs {
+		if v == m.view {
+			idx = i
+			break
+		}
+	}
+	return subs[(idx+step+len(subs))%len(subs)]
 }
 
 // openSearch flips the active view to Search, focuses the list pane, and

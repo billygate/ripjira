@@ -882,80 +882,57 @@ func TestTabBar_RendersTwoLabels(t *testing.T) {
 	m := newTestModel(t)
 	m, _ = sendSize(m, 80, 24)
 	out := stripANSI(m.View())
-	for _, want := range []string{"MY ISSUES", "WATCHING", "REPORTED"} {
+	for _, want := range []string{"MY ISSUES", "SPRINT", "STRUCTURES", "ASSIGNED", "WATCHING", "REPORTED"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("tab bar missing %q\nfull output:\n%s", want, out)
 		}
 	}
-	// SEARCH should NOT appear in the tab bar at rest — it is a transient
-	// mode entered via `/`.
-	if strings.Contains(out, "SEARCH") {
-		t.Errorf("tab bar should not include SEARCH at rest; got:\n%s", out)
-	}
 }
 
-func TestTabBar_NextTabCyclesForward(t *testing.T) {
+// `]` cycles SUB-views within the active top tab (MY ISSUES has five subs).
+func TestTabBar_NextSubCyclesForward(t *testing.T) {
 	m := newTestModel(t)
 	m, _ = sendSize(m, 80, 24)
 	if m.view != panes.ViewMyTasks {
 		t.Fatalf("initial view = %v, want ViewMyTasks", m.view)
 	}
-	mi, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-	m = mi.(Model)
-	if m.view != panes.ViewWatching {
-		t.Errorf("after ] view = %v, want ViewWatching", m.view)
+	want := []panes.ViewKind{
+		panes.ViewWatching, panes.ViewReported, panes.ViewRecent,
+		panes.ViewMentions, panes.ViewMyTasks,
 	}
-	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-	m = mi.(Model)
-	if m.view != panes.ViewReported {
-		t.Errorf("after ]] view = %v, want ViewReported", m.view)
-	}
-	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-	m = mi.(Model)
-	if m.view != panes.ViewRecent {
-		t.Errorf("after ]]] view = %v, want ViewRecent", m.view)
-	}
-	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-	m = mi.(Model)
-	if m.view != panes.ViewSprint {
-		t.Errorf("after ]]]] view = %v, want ViewSprint", m.view)
-	}
-	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-	m = mi.(Model)
-	if m.view != panes.ViewMentions {
-		t.Errorf("after ]]]]] view = %v, want ViewMentions", m.view)
-	}
-	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
-	m = mi.(Model)
-	if m.view != panes.ViewMyTasks {
-		t.Errorf("wrap: after ]]]]]] view = %v, want ViewMyTasks", m.view)
-	}
-}
-
-func TestTabBar_PrevTabCyclesBackward(t *testing.T) {
-	m := newTestModel(t)
-	m, _ = sendSize(m, 80, 24)
-	mi, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
-	m = mi.(Model)
-	if m.view != panes.ViewMentions {
-		t.Errorf("after [ view = %v, want ViewMentions", m.view)
-	}
-	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
-	m = mi.(Model)
-	if m.view != panes.ViewSprint {
-		t.Errorf("after [[ view = %v, want ViewSprint", m.view)
-	}
-}
-
-func TestTabBar_SearchExcludedFromCycle(t *testing.T) {
-	m := newTestModel(t)
-	m, _ = sendSize(m, 80, 24)
-	for range 6 {
+	for i, w := range want {
 		mi, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
 		m = mi.(Model)
-		if m.view == panes.ViewSearch {
-			t.Fatalf("] should never land on ViewSearch, got %v", m.view)
+		if m.view != w {
+			t.Errorf("after %d × ] view = %v, want %v", i+1, m.view, w)
 		}
+	}
+}
+
+// `}` cycles TOP tabs (MY → SPRINT → STRUCTURES → SEARCH → MY).
+func TestTabBar_NextTopCyclesForward(t *testing.T) {
+	m := newTestModel(t)
+	m, _ = sendSize(m, 80, 24)
+	mi, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'}'}})
+	m = mi.(Model)
+	if g := panes.TopGroup(m.view); g != panes.TopSprint {
+		t.Errorf("after } topGroup = %v, want TopSprint", g)
+	}
+	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'}'}})
+	m = mi.(Model)
+	if g := panes.TopGroup(m.view); g != panes.TopStructures {
+		t.Errorf("after }} topGroup = %v, want TopStructures", g)
+	}
+}
+
+// `{` cycles TOP tabs backward.
+func TestTabBar_PrevTopCyclesBackward(t *testing.T) {
+	m := newTestModel(t)
+	m, _ = sendSize(m, 80, 24)
+	mi, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'{'}})
+	m = mi.(Model)
+	if g := panes.TopGroup(m.view); g != panes.TopSearch {
+		t.Errorf("after { topGroup = %v, want TopSearch", g)
 	}
 }
 

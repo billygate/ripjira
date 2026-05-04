@@ -27,6 +27,16 @@ type State struct {
 	Favorites      []Favorite        `json:"favorites,omitempty"`
 	RecentlyViewed []string          `json:"recentlyViewed,omitempty"`
 	CommentDrafts  map[string]string `json:"commentDrafts,omitempty"`
+
+	// LastStructure maps project key → last-selected structure id for that
+	// project. Persisted so opening the STRUCTURES tab next session restores
+	// the previous view per project.
+	LastStructure map[string]string `json:"lastStructure,omitempty"`
+
+	// LastSubView remembers the last sub-view (ViewKind as int) chosen under
+	// each top-tab so `}`/`{` returns to the user's previous scope rather
+	// than always landing on the first sub-tab. Keys are TopTabKind ints.
+	LastSubView map[int]int `json:"lastSubView,omitempty"`
 }
 
 // Favorite is a named JQL query the user has saved for re-use. Names are

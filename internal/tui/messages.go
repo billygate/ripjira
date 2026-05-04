@@ -33,6 +33,11 @@ type SelectionChangedMsg struct {
 // The app re-runs both the list and the open issue's detail loads.
 type RefreshRequestedMsg struct{}
 
+// structureChangedMsg fires when the YAML file for a project's structures
+// changes on disk. The Update handler invalidates the loaded-structures cache
+// and re-arms the watcher Cmd for the next event.
+type structureChangedMsg struct{ Project string }
+
 // BackgroundActivityMsg adjusts the count of in-flight background operations.
 // The spinner in the top bar is shown when the count is positive. Panes emit
 // +1 when they kick off a network request and -1 when it completes.

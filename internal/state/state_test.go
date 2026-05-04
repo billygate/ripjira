@@ -145,3 +145,26 @@ func TestState_OmitemptyKeepsLegacyShape(t *testing.T) {
 		t.Fatalf("legacy state should not include new fields when unset; got %s", string(raw))
 	}
 }
+
+func TestState_LastStructureRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+
+	if err := state.Mutate(path, func(s *state.State) {
+		if s.LastStructure == nil {
+			s.LastStructure = map[string]string{}
+		}
+		s.LastStructure["BIL"] = "my-team"
+		s.LastStructure["OPS"] = "default"
+	}); err != nil {
+		t.Fatalf("mutate: %v", err)
+	}
+
+	got, err := state.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got.LastStructure["BIL"] != "my-team" || got.LastStructure["OPS"] != "default" {
+		t.Fatalf("round-trip lost data: %#v", got.LastStructure)
+	}
+}
