@@ -104,6 +104,34 @@ func TestEpicPicker_FilterAcceptsJK(t *testing.T) {
 	}
 }
 
+func TestEpicPicker_FilterAcceptsSpace(t *testing.T) {
+	p := NewEpic()
+	p = p.Show("BILLING-1", "")
+	p = p.SetEpics([]jira.Issue{
+		{Key: "BILLING-100", Summary: "Setup deploy"},
+		{Key: "BILLING-200", Summary: "Setupthing"},
+	})
+	keys := []tea.KeyMsg{
+		{Type: tea.KeyRunes, Runes: []rune{'S'}},
+		{Type: tea.KeyRunes, Runes: []rune{'e'}},
+		{Type: tea.KeyRunes, Runes: []rune{'t'}},
+		{Type: tea.KeyRunes, Runes: []rune{'u'}},
+		{Type: tea.KeyRunes, Runes: []rune{'p'}},
+		{Type: tea.KeySpace, Runes: []rune{' '}},
+		{Type: tea.KeyRunes, Runes: []rune{'d'}},
+	}
+	for _, k := range keys {
+		p, _ = p.Update(k)
+	}
+	if p.filter != "Setup d" {
+		t.Fatalf("filter = %q, want %q (space must be accepted as input)", p.filter, "Setup d")
+	}
+	view := p.View(epicTestStyles())
+	if !strings.Contains(view, "BILLING-100") || strings.Contains(view, "BILLING-200") {
+		t.Fatalf("filter should keep BILLING-100, drop BILLING-200; view:\n%s", view)
+	}
+}
+
 func TestEpicPicker_EscDispatchesCancelled(t *testing.T) {
 	p := NewEpic()
 	p = p.Show("BILLING-1", "")

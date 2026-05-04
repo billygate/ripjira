@@ -142,7 +142,7 @@ func (e Epic) Update(msg tea.Msg) (Epic, tea.Cmd) {
 			e.cursor = 0
 		}
 		return e, nil
-	case tea.KeyRunes:
+	case tea.KeyRunes, tea.KeySpace:
 		e.filter += string(k.Runes)
 		e.cursor = 0
 		return e, nil
