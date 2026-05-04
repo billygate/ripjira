@@ -414,15 +414,17 @@ func (m Model) mentionsJQL() string {
 	return `comment ~ "` + escaped + `" ORDER BY updated DESC`
 }
 
-// structuresJQL returns the JQL feeding the STRUCTURES tab — every issue in
-// the default project, freshest first. Structures then partition this stream
-// into named sections via local filters. Empty when no defaultProject is
-// configured; loader short-circuits to no fetch.
+// structuresJQL returns the JQL feeding the STRUCTURES tab. The default
+// scope is "live work" — every unresolved issue plus anything touched in
+// the last 30 days, freshest first. Structures' filters then partition the
+// stream into named sections. Empty when no defaultProject is configured;
+// loader short-circuits to no fetch.
 func (m Model) structuresJQL() string {
 	if m.defaultProject == "" {
 		return ""
 	}
-	return `project = "` + m.defaultProject + `" ORDER BY updated DESC`
+	return `project = "` + m.defaultProject +
+		`" AND (resolution = Unresolved OR updated >= -30d) ORDER BY updated DESC`
 }
 
 // reorderByRecent sorts issues into the order they appear in m.recentKeys.
