@@ -19,6 +19,7 @@ import (
 	"github.com/billygate/ripjira/internal/tui/grouping"
 	"github.com/billygate/ripjira/internal/tui/overlays"
 	"github.com/billygate/ripjira/internal/tui/panes"
+	"github.com/billygate/ripjira/internal/tui/structureadapter"
 	"github.com/billygate/ripjira/internal/tui/styles"
 	"github.com/billygate/ripjira/internal/tui/themes"
 )
@@ -275,6 +276,8 @@ func New(p themes.Palette, opts ...Option) Model {
 	if m.loader != nil {
 		m.detail = panes.NewDetail(st, m.loader, 1, 1)
 	}
+	// initialIssues are placed via feedList in Init/handleListFetched once the
+	// view is settled; here we just store them on m.list as the flat fallback.
 	if len(m.initialIssues) > 0 {
 		m.list.SetIssues(m.initialIssues)
 	}
@@ -580,6 +583,101 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// feedList routes issues into the list pane: in sectioned mode (active
+// structure on the STRUCTURES tab) it builds sections via structure.Apply;
+// otherwise it falls through to SetIssues. Always called before rendering
+// so the two modes never coexist.
+func (m *Model) feedList(issues []jira.Issue) {
+	if m.view != panes.ViewStructures {
+		m.list.SetSections(nil)
+		m.list.SetIssues(issues)
+		return
+	}
+	st, ok := m.activeStructure()
+	if !ok {
+		m.list.SetSections(nil)
+		m.list.SetIssues(issues)
+		return
+	}
+	adapters := make([]structure.Issue, len(issues))
+	for i := range issues {
+		adapters[i] = structureadapter.New(issues[i])
+	}
+	applied := structure.Apply(adapters, &st)
+	secs := make([]panes.Section, 0, len(applied))
+	for _, a := range applied {
+		real := make([]jira.Issue, len(a.Issues))
+		for i, x := range a.Issues {
+			real[i] = x.(structureadapter.Adapter).Issue()
+		}
+		secs = append(secs, panes.Section{Title: a.Title, ReadOnly: st.IsReadOnly(), Issues: real})
+	}
+	m.list.SetIssues(nil)
+	m.list.SetSections(secs)
+}
+
+// activeStructure resolves the currently-selected structure for the default
+// project. Falls back to the Default built-in when no selection exists.
+func (m *Model) activeStructure() (structure.Structure, bool) {
+	pk := m.defaultProject
+	if pk == "" {
+		return structure.Structure{}, false
+	}
+	id := m.currentStructID[pk]
+	if id == "" {
+		id = structure.BuiltinDefaultID
+	}
+	all, err := m.loadStructuresFor(pk)
+	if err != nil {
+		return structure.Structure{}, false
+	}
+	for i := range all {
+		if all[i].ID == id {
+			return all[i], true
+		}
+	}
+	if len(all) > 0 {
+		return all[0], true
+	}
+	return structure.Structure{}, false
+}
+
+// persistLastStructure writes the structure id for project to state.json
+// asynchronously. No-op when state path is unset.
+func (m *Model) persistLastStructure(project, id string) {
+	if m.statePath == "" || project == "" {
+		return
+	}
+	path := m.statePath
+	go func() {
+		_ = state.Mutate(path, func(s *state.State) {
+			if s.LastStructure == nil {
+				s.LastStructure = map[string]string{}
+			}
+			s.LastStructure[project] = id
+		})
+	}()
+}
+
+// loadStructuresFor returns built-ins + user structures for project, caching
+// the result. The watcher invalidates the cache on file changes.
+func (m *Model) loadStructuresFor(project string) ([]structure.Structure, error) {
+	if v, ok := m.loadedStructs[project]; ok {
+		return v, nil
+	}
+	if m.structures == nil {
+		v := structure.Builtins(project)
+		m.loadedStructs[project] = v
+		return v, nil
+	}
+	v, err := m.structures.Load(project)
+	if err != nil {
+		return nil, err
+	}
+	m.loadedStructs[project] = v
+	return v, nil
+}
+
 // watchStructuresNextCmd blocks for the next watcher event and translates it
 // into structureChangedMsg. Re-armed by the Update handler after each event.
 func (m Model) watchStructuresNextCmd() tea.Cmd {
@@ -708,7 +806,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil || len(msg.Issues) == 0 {
 			return m, nil
 		}
-		m.list.SetIssues(msg.Issues)
+		m.feedList(msg.Issues)
 		prefetchCmd := m.startPrefetch(msg.Issues)
 		return m, tea.Batch(prefetchCmd, m.syncDetailFromList())
 	case listFetchedMsg:
@@ -2481,6 +2579,16 @@ func (m Model) handleViewSelected(v panes.ViewKind) (tea.Model, tea.Cmd) {
 		// any grouping will fight that. ByStatus is a tolerable default —
 		// the user can switch via the options overlay if they want.
 		m.list.SetStrategy(grouping.ByStatus{})
+	case panes.ViewStructures:
+		// Sectioned mode draws its own headers via the chosen structure;
+		// keep a tolerable default within-section grouping.
+		m.list.SetStrategy(grouping.ByStatus{})
+		if m.defaultProject != "" {
+			if _, ok := m.currentStructID[m.defaultProject]; !ok {
+				m.currentStructID[m.defaultProject] = structure.BuiltinDefaultID
+				m.persistLastStructure(m.defaultProject, structure.BuiltinDefaultID)
+			}
+		}
 	}
 	m.detail.SetIssue(nil)
 	m.selectedKey = ""
@@ -2516,7 +2624,7 @@ func (m Model) handleListFetched(msg listFetchedMsg) (tea.Model, tea.Cmd) {
 	if m.view == panes.ViewRecent {
 		issues = m.reorderByRecent(issues)
 	}
-	m.list.SetIssues(issues)
+	m.feedList(issues)
 	if m.view == panes.ViewMyTasks && m.cachePath != "" && m.accountID != "" {
 		path, account := m.cachePath, m.accountID
 		toCache := issues
