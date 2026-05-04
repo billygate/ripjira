@@ -147,15 +147,14 @@ func TestView_RendersFrame(t *testing.T) {
 	m, _ = sendSize(m, 80, 24)
 	out := stripANSI(m.View())
 
-	for _, want := range []string{"ripjira", "Issues", "Details"} {
+	for _, want := range []string{"RJ", "Issues", "Details"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("View missing %q\nfull output:\n%s", want, out)
 		}
 	}
 
-	// hint bar should advertise short-help bindings (help shortcut is
-	// intentionally not in the footer — it lives in the help overlay).
-	for _, want := range []string{"tab"} {
+	// hint bar should advertise the tab navigation hints.
+	for _, want := range []string{"top tab", "sub-tab"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("hint bar missing %q", want)
 		}
@@ -183,7 +182,7 @@ func TestApp_BootsAndQuits(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(80, 24))
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("ripjira"))
+		return bytes.Contains(out, []byte("RJ"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -234,7 +233,7 @@ func TestHelpOverlay_TeaTestEndToEnd(t *testing.T) {
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 40))
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("ripjira"))
+		return bytes.Contains(out, []byte("RJ"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})

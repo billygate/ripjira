@@ -414,6 +414,17 @@ func (m Model) mentionsJQL() string {
 	return `comment ~ "` + escaped + `" ORDER BY updated DESC`
 }
 
+// structuresJQL returns the JQL feeding the STRUCTURES tab — every issue in
+// the default project, freshest first. Structures then partition this stream
+// into named sections via local filters. Empty when no defaultProject is
+// configured; loader short-circuits to no fetch.
+func (m Model) structuresJQL() string {
+	if m.defaultProject == "" {
+		return ""
+	}
+	return `project = "` + m.defaultProject + `" ORDER BY updated DESC`
+}
+
 // reorderByRecent sorts issues into the order they appear in m.recentKeys.
 // Issues whose keys are not in the recent list (defensive — shouldn't
 // happen since we filtered by key in the JQL) are dropped.
@@ -866,6 +877,8 @@ func (m Model) dispatchListRefresh() (Model, tea.Cmd) {
 		query = m.sprintJQL()
 	case panes.ViewMentions:
 		query = m.mentionsJQL()
+	case panes.ViewStructures:
+		query = m.structuresJQL()
 	}
 	cmd := tea.Batch(
 		func() tea.Msg { return BackgroundActivityMsg{Delta: 1} },
@@ -3043,7 +3056,7 @@ func (m Model) paneDims() (listW, detailW, previewW, contentHeight int) {
 }
 
 func (m Model) renderTopBar() string {
-	parts := []string{m.styles.TopBar.Render("~/ripjira>"), m.renderTabs()}
+	parts := []string{m.styles.TopBar.Render("~/RJ>"), m.renderTabs()}
 	if sp := m.spinner.View(); sp != "" {
 		parts = append(parts, m.styles.Accent.Render(sp))
 	}
