@@ -622,9 +622,13 @@ func (m *List) applyLocalFilter(in []jira.Issue) []jira.Issue {
 func (m *List) rebuild() {
 	prevSelKey, prevSelGroup := "", ""
 	if it, ok := m.list.SelectedItem().(listItem); ok {
-		if it.isGroup() {
+		switch {
+		case it.isSection():
+			// Section rows have no stable key beyond title; let the rebuild
+			// pick a fresh selection rather than chase the moving header.
+		case it.isGroup():
 			prevSelGroup = it.GroupKey
-		} else {
+		default:
 			prevSelKey = it.Issue.Key
 		}
 	}
@@ -701,7 +705,7 @@ func (m *List) rebuild() {
 				m.list.Select(idx)
 				return
 			}
-			if prevSelKey != "" && !it.isGroup() && it.Issue.Key == prevSelKey {
+			if prevSelKey != "" && !it.isGroup() && !it.isSection() && it.Issue.Key == prevSelKey {
 				m.list.Select(idx)
 				return
 			}
