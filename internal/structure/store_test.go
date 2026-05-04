@@ -71,6 +71,17 @@ func TestStore_LoadRejectsInvalid(t *testing.T) {
 	}
 }
 
+func TestDefaultDir_XDGOverridesHome(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/tmp/cfg-xyz")
+	got, err := DefaultDir()
+	if err != nil {
+		t.Fatalf("default dir: %v", err)
+	}
+	if got != filepath.Join("/tmp/cfg-xyz", "ripjira", "structures") {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestStore_FindByID(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)

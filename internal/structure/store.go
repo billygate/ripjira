@@ -12,6 +12,19 @@ import (
 // ErrNotFound is returned by FindByID when no matching structure exists.
 var ErrNotFound = errors.New("structure not found")
 
+// DefaultDir returns the XDG-aware default location for structure files:
+// $XDG_CONFIG_HOME/ripjira/structures or ~/.config/ripjira/structures.
+func DefaultDir() (string, error) {
+	if cfg := os.Getenv("XDG_CONFIG_HOME"); cfg != "" {
+		return filepath.Join(cfg, "ripjira", "structures"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "ripjira", "structures"), nil
+}
+
 // Store loads structures from a directory of <PROJECT>.yml files. Each file
 // is a YAML list of Structure values. Built-ins are always returned in front
 // of user structures.
