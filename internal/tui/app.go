@@ -3066,7 +3066,8 @@ func (m Model) renderTopBar() string {
 // one sub-view (Sprint / Structures / Search), only the top label is shown.
 func (m Model) renderTabs() string {
 	active := panes.TopGroup(m.view)
-	topCell := m.styles.ActiveTab.Render(active.String())
+	topCell := m.styles.ActiveTab.Render(active.String()) +
+		m.styles.Muted.Render(" [g]")
 	subs := panes.SubViews(active)
 	if len(subs) <= 1 {
 		return topCell
