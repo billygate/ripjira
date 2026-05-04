@@ -126,6 +126,11 @@ type Model struct {
 	structureEvents <-chan structure.Event
 	currentStructID map[string]string
 	loadedStructs   map[string][]structure.Structure
+
+	// lastSubView remembers the last sub-view chosen under each top tab so
+	// `]`/`[` returns to the user's previous scope rather than always landing
+	// on the first sub.
+	lastSubView map[panes.TopTabKind]panes.ViewKind
 }
 
 // QuitArmed reports whether the user has pressed Esc once on the main view
@@ -285,6 +290,7 @@ func New(p themes.Palette, opts ...Option) Model {
 	}
 	m.currentStructID = map[string]string{}
 	m.loadedStructs = map[string][]structure.Structure{}
+	m.lastSubView = map[panes.TopTabKind]panes.ViewKind{}
 	if m.statePath != "" {
 		if st, err := state.Load(m.statePath); err == nil {
 			if st.Grouping != "" {
@@ -302,6 +308,9 @@ func New(p themes.Palette, opts ...Option) Model {
 			m.recentKeys = append([]string(nil), st.RecentlyViewed...)
 			for k, v := range st.LastStructure {
 				m.currentStructID[k] = v
+			}
+			for k, v := range st.LastSubView {
+				m.lastSubView[panes.TopTabKind(k)] = panes.ViewKind(v)
 			}
 		}
 	}
@@ -677,34 +686,23 @@ func (m Model) openStructurePicker() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// cycleStructure rotates the active structure by step (+1/-1) within the
-// current project's list. No-op outside the STRUCTURES tab.
-func (m Model) cycleStructure(step int) (tea.Model, tea.Cmd) {
-	if m.view != panes.ViewStructures {
-		return m, nil
+
+// persistLastSubView writes the active sub-view under top to state.json so
+// the next session restores the user's scope. Async; no-op without a state
+// path.
+func (m *Model) persistLastSubView(top panes.TopTabKind, v panes.ViewKind) {
+	if m.statePath == "" {
+		return
 	}
-	pk := m.defaultProject
-	if pk == "" {
-		return m, nil
-	}
-	all, err := m.loadStructuresFor(pk)
-	if err != nil || len(all) == 0 {
-		return m, nil
-	}
-	curID := m.currentStructID[pk]
-	idx := 0
-	for i, s := range all {
-		if s.ID == curID {
-			idx = i
-			break
-		}
-	}
-	idx = (idx + step + len(all)) % len(all)
-	newID := all[idx].ID
-	m.currentStructID[pk] = newID
-	m.persistLastStructure(pk, newID)
-	m.feedList(m.list.Issues())
-	return m, nil
+	path := m.statePath
+	go func() {
+		_ = state.Mutate(path, func(s *state.State) {
+			if s.LastSubView == nil {
+				s.LastSubView = map[int]int{}
+			}
+			s.LastSubView[int(top)] = int(v)
+		})
+	}()
 }
 
 // persistLastStructure writes the structure id for project to state.json
@@ -1320,10 +1318,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openEpicPicker()
 	case key.Matches(msg, m.keymap.OpenStructures):
 		return m.openStructurePicker()
-	case key.Matches(msg, m.keymap.CycleStructureNext):
-		return m.cycleStructure(+1)
-	case key.Matches(msg, m.keymap.CycleStructurePrev):
-		return m.cycleStructure(-1)
+	case key.Matches(msg, m.keymap.NextSubView):
+		return m.handleViewSelected(m.nextSubView())
+	case key.Matches(msg, m.keymap.PrevSubView):
+		return m.handleViewSelected(m.prevSubView())
 	case key.Matches(msg, m.keymap.AddLink):
 		return m.openLinkOverlay()
 	case key.Matches(msg, m.keymap.RemoveLink):
@@ -2657,6 +2655,8 @@ func (m Model) handleViewSelected(v panes.ViewKind) (tea.Model, tea.Cmd) {
 		m.searchQuery = ""
 	}
 	m.view = v
+	m.lastSubView[panes.TopGroup(v)] = v
+	m.persistLastSubView(panes.TopGroup(v), v)
 	switch v {
 	case panes.ViewMyTasks:
 		m.list.SetStrategy(grouping.ByEpicAndPriority{})
@@ -2801,7 +2801,12 @@ func (m Model) View() string {
 		)
 	}
 
-	parts := []string{topBar, tabBar, body}
+	subTabBar := m.renderSubTabs()
+	parts := []string{topBar}
+	if subTabBar != "" {
+		parts = append(parts, subTabBar)
+	}
+	parts = append(parts, tabBar, body)
 	if toasts != "" {
 		parts = append(parts, toasts)
 	}
@@ -2921,6 +2926,9 @@ func (m Model) paneDims() (listW, detailW, previewW, contentHeight int) {
 	tabBar := m.renderTabBar()
 	hintBar := m.renderHintBar()
 	overhead := lipgloss.Height(topBar) + lipgloss.Height(tabBar) + lipgloss.Height(hintBar)
+	if sub := m.renderSubTabs(); sub != "" {
+		overhead += lipgloss.Height(sub)
+	}
 	if v := m.toasts.View(m.styles); v != "" {
 		overhead += lipgloss.Height(v)
 	}
@@ -2955,30 +2963,37 @@ func (m Model) renderTopBar() string {
 // tab; when active it appends a SEARCH cell so the user has a visual cue,
 // but it is not part of the `[`/`]` cycle.
 func (m Model) renderTabs() string {
-	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions, panes.ViewStructures}
-	labels := map[panes.ViewKind]string{
-		panes.ViewMyTasks:  "MY ISSUES",
-		panes.ViewWatching: "WATCHING",
-		panes.ViewReported: "REPORTED",
-		panes.ViewRecent:   "RECENT",
-		panes.ViewSprint:   "SPRINT",
-		panes.ViewMentions: "MENTIONS",
-		panes.ViewSearch:     "SEARCH",
-		panes.ViewStructures: "STRUCTURES",
+	active := panes.TopGroup(m.view)
+	cells := make([]string, 0, len(panes.AllTopTabs()))
+	for _, t := range panes.AllTopTabs() {
+		label := t.String()
+		if t == active {
+			cells = append(cells, m.styles.ActiveTab.Render(label))
+		} else {
+			cells = append(cells, m.styles.InactiveTab.Render(label))
+		}
 	}
-	cells := make([]string, 0, len(items)+1)
-	for _, v := range items {
-		label := labels[v]
+	return lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+}
+
+// renderSubTabs returns the second row of tabs scoped to the active top tab.
+// Returns "" when the top tab has only one sub-view (no row to render).
+func (m Model) renderSubTabs() string {
+	subs := panes.SubViews(panes.TopGroup(m.view))
+	if len(subs) <= 1 {
+		return ""
+	}
+	cells := make([]string, 0, len(subs))
+	for _, v := range subs {
+		label := panes.SubLabel(v)
 		if v == m.view {
 			cells = append(cells, m.styles.ActiveTab.Render(label))
 		} else {
 			cells = append(cells, m.styles.InactiveTab.Render(label))
 		}
 	}
-	if m.view == panes.ViewSearch {
-		cells = append(cells, m.styles.ActiveTab.Render(labels[panes.ViewSearch]))
-	}
-	return lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+	row := lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+	return m.styles.Muted.Render("  ") + row
 }
 
 // renderPrefetchIndicator returns a static "▒ caching N/M" chip when the
@@ -3171,24 +3186,57 @@ func (m Model) stepFocus(step int) (Model, tea.Cmd) {
 // only via the `/` hotkey and behaves as a transient mode rather than a
 // tab.
 func (m Model) nextView() panes.ViewKind {
-	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions, panes.ViewStructures}
-	for i, v := range items {
-		if v == m.view {
-			return items[(i+1)%len(items)]
-		}
-	}
-	return panes.ViewMyTasks
+	return m.cycleTopTab(+1)
 }
 
 // prevView is nextView's mirror.
 func (m Model) prevView() panes.ViewKind {
-	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions, panes.ViewStructures}
-	for i, v := range items {
-		if v == m.view {
-			return items[(i-1+len(items))%len(items)]
+	return m.cycleTopTab(-1)
+}
+
+// cycleTopTab advances the active top-level tab by step, returning the
+// preferred sub-view of the new top: the persisted last sub-view if any,
+// else the first sub.
+func (m Model) cycleTopTab(step int) panes.ViewKind {
+	tops := panes.AllTopTabs()
+	cur := panes.TopGroup(m.view)
+	idx := 0
+	for i, t := range tops {
+		if t == cur {
+			idx = i
+			break
 		}
 	}
-	return panes.ViewMyTasks
+	idx = (idx + step + len(tops)) % len(tops)
+	target := tops[idx]
+	if v, ok := m.lastSubView[target]; ok {
+		return v
+	}
+	subs := panes.SubViews(target)
+	if len(subs) == 0 {
+		return panes.ViewMyTasks
+	}
+	return subs[0]
+}
+
+// nextSubView / prevSubView cycle within the active top tab's sub-views.
+// Returns m.view unchanged when the top has a single sub.
+func (m Model) nextSubView() panes.ViewKind { return m.cycleSubView(+1) }
+func (m Model) prevSubView() panes.ViewKind { return m.cycleSubView(-1) }
+
+func (m Model) cycleSubView(step int) panes.ViewKind {
+	subs := panes.SubViews(panes.TopGroup(m.view))
+	if len(subs) <= 1 {
+		return m.view
+	}
+	idx := 0
+	for i, v := range subs {
+		if v == m.view {
+			idx = i
+			break
+		}
+	}
+	return subs[(idx+step+len(subs))%len(subs)]
 }
 
 // openSearch flips the active view to Search, focuses the list pane, and

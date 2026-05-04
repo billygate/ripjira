@@ -88,7 +88,8 @@ ripjira login --reset   # delete the stored token first, then re-run
 | ------------------ | ------------------------------------- |
 | `↑`/`k`, `↓`/`j`   | move up / down                        |
 | `tab`, `shift+tab` | focus next / previous pane            |
-| `]`, `[`           | next / previous tab                   |
+| `}`, `{`           | next / previous top tab               |
+| `]`, `[`           | next / previous sub-tab               |
 | `g`, `G`           | jump to top / bottom                  |
 | `space`            | collapse / expand current group       |
 | `,`                | open Options (grouping + sort)        |
@@ -103,7 +104,6 @@ ripjira login --reset   # delete the stored token first, then re-run
 | `o`                | open current issue in your browser    |
 | `r`                | force refresh                         |
 | `\`                | pick a structure (Structures tab)     |
-| `}`, `{`           | next / previous structure             |
 | `?`                | show full help overlay                |
 | `esc`              | close overlay (or arm quit)           |
 | `q`, `ctrl+c`      | quit                                  |

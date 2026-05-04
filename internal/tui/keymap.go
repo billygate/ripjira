@@ -41,9 +41,9 @@ type Keymap struct {
 	EditDueDate        key.Binding
 	EditDescription    key.Binding
 	EditEpic           key.Binding
-	OpenStructures     key.Binding
-	CycleStructureNext key.Binding
-	CycleStructurePrev key.Binding
+	OpenStructures key.Binding
+	NextSubView    key.Binding
+	PrevSubView    key.Binding
 	AddLink            key.Binding
 	RemoveLink         key.Binding
 	Watch              key.Binding
@@ -75,12 +75,12 @@ func DefaultKeymap() Keymap {
 			key.WithHelp("shift+tab", "prev pane"),
 		),
 		NextTab: key.NewBinding(
-			key.WithKeys("]"),
-			key.WithHelp("]", "next tab"),
+			key.WithKeys("}"),
+			key.WithHelp("}", "next tab"),
 		),
 		PrevTab: key.NewBinding(
-			key.WithKeys("["),
-			key.WithHelp("[", "prev tab"),
+			key.WithKeys("{"),
+			key.WithHelp("{", "prev tab"),
 		),
 		FocusLeft: key.NewBinding(
 			key.WithKeys("h", "left"),
@@ -186,13 +186,13 @@ func DefaultKeymap() Keymap {
 			key.WithKeys("\\"),
 			key.WithHelp("\\", "pick structure"),
 		),
-		CycleStructureNext: key.NewBinding(
-			key.WithKeys("}"),
-			key.WithHelp("}", "next structure"),
+		NextSubView: key.NewBinding(
+			key.WithKeys("]"),
+			key.WithHelp("]", "next sub-tab"),
 		),
-		CycleStructurePrev: key.NewBinding(
-			key.WithKeys("{"),
-			key.WithHelp("{", "prev structure"),
+		PrevSubView: key.NewBinding(
+			key.WithKeys("["),
+			key.WithHelp("[", "prev sub-tab"),
 		),
 		AddLink: key.NewBinding(
 			key.WithKeys("+"),
@@ -247,7 +247,7 @@ func (k Keymap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.CycleFocusForward, k.CycleFocusBackward, k.NextTab, k.PrevTab, k.FocusLeft, k.FocusRight, k.Top, k.Bottom, k.ToggleGroup, k.OpenSearch, k.OpenOptions},
 		{k.Open, k.Status, k.Assign, k.Comment, k.New, k.NewSubtask, k.Browser, k.Refresh},
-		{k.OpenStructures, k.CycleStructureNext, k.CycleStructurePrev},
+		{k.OpenStructures, k.NextSubView, k.PrevSubView},
 		{k.Help, k.CloseOverlay, k.Quit},
 	}
 }
@@ -256,7 +256,7 @@ func (k Keymap) FullHelp() [][]key.Binding {
 // Kept here so the help overlay can read both shape and labelling from the
 // same place without duplicating the binding lists.
 func (k Keymap) FullHelpTitles() []string {
-	return []string{"Navigation", "Actions", "Structures", "App"}
+	return []string{"Navigation", "Actions", "Tabs", "App"}
 }
 
 // All returns every binding in the keymap as a flat slice. Useful for tests
@@ -269,6 +269,6 @@ func (k Keymap) All() []key.Binding {
 		k.ToggleGroup, k.Open,
 		k.Status, k.Assign, k.Comment, k.New, k.NewSubtask, k.Browser,
 		k.Refresh, k.OpenSearch, k.OpenOptions, k.Help, k.CloseOverlay, k.Quit,
-		k.OpenStructures, k.CycleStructureNext, k.CycleStructurePrev,
+		k.OpenStructures, k.NextSubView, k.PrevSubView,
 	}
 }
