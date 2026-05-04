@@ -143,7 +143,7 @@ func TestByName(t *testing.T) {
 		"unknown":  "status",
 	}
 	for in, want := range cases {
-		if got := grouping.ByName(in).Name(); got != want {
+		if got := grouping.ByName(in, nil).Name(); got != want {
 			t.Errorf("ByName(%q).Name() = %q, want %q", in, got, want)
 		}
 	}
@@ -252,4 +252,65 @@ var (
 	_ grouping.Strategy = grouping.ByStatus{}
 	_ grouping.Strategy = grouping.ByPriority{}
 	_ grouping.Strategy = grouping.ByEpicAndPriority{}
+	_ grouping.Strategy = grouping.ByParent{}
 )
+
+func TestByParent_BucketsAndOrder(t *testing.T) {
+	mk := func(key, typ, parent, parentSum, prio string) jira.Issue {
+		return jira.Issue{
+			Key:           key,
+			Type:          jira.IssueType{Name: typ},
+			Priority:      jira.Priority{Name: prio},
+			ParentKey:     parent,
+			ParentSummary: parentSum,
+		}
+	}
+	issues := []jira.Issue{
+		mk("BIL-2", "Task", "BIL-100", "Setup deploy", "Low"),
+		mk("BIL-100", "Epic Feature", "", "", "Medium"),
+		mk("BIL-3", "Task", "BIL-200", "", "High"),
+		mk("BIL-4", "Task", "", "", "Medium"),
+		mk("BIL-1", "Task", "BIL-100", "Setup deploy", "High"),
+	}
+	got := grouping.ByParent{EpicTypes: []string{"Epic", "Epic Feature"}}.Group(issues)
+	keys := make([]string, len(got))
+	for i, g := range got {
+		keys[i] = g.Key
+	}
+	want := []string{
+		"Epics",
+		"BIL-100  Setup deploy",
+		"BIL-200",
+		"No epic",
+	}
+	if !reflect.DeepEqual(keys, want) {
+		t.Fatalf("group keys = %#v\nwant %#v", keys, want)
+	}
+	bucket := got[1].Issues
+	if len(bucket) != 2 || bucket[0].Key != "BIL-1" || bucket[1].Key != "BIL-2" {
+		t.Fatalf("BIL-100 bucket order: %#v", bucket)
+	}
+}
+
+func TestByName_ParentReturnsByParent(t *testing.T) {
+	s := grouping.ByName("parent", []string{"Epic", "Epic Feature"})
+	bp, ok := s.(grouping.ByParent)
+	if !ok {
+		t.Fatalf("got %T, want ByParent", s)
+	}
+	if !reflect.DeepEqual(bp.EpicTypes, []string{"Epic", "Epic Feature"}) {
+		t.Fatalf("EpicTypes not propagated: %#v", bp.EpicTypes)
+	}
+}
+
+func TestByName_EpicStaysByEpic(t *testing.T) {
+	if _, ok := grouping.ByName("epic", nil).(grouping.ByEpicAndPriority); !ok {
+		t.Fatalf("epic should still map to ByEpicAndPriority")
+	}
+}
+
+func TestByName_StatusFallback(t *testing.T) {
+	if _, ok := grouping.ByName("", nil).(grouping.ByStatus); !ok {
+		t.Fatalf("empty name should fall back to ByStatus")
+	}
+}

@@ -86,6 +86,7 @@ type Model struct {
 	accountID      string
 	displayName    string
 	defaultProject string
+	epicTypes      []string
 	initialIssues  []jira.Issue
 
 	assignDebounce    time.Duration
@@ -185,6 +186,12 @@ func WithDefaultProject(s string) Option {
 	return func(m *Model) { m.defaultProject = s }
 }
 
+// WithEpicTypes wires the configured epic-issue-type names so the "parent"
+// grouping strategy can distinguish epic rows from their children.
+func WithEpicTypes(types []string) Option {
+	return func(m *Model) { m.epicTypes = append([]string(nil), types...) }
+}
+
 // WithInitialIssues seeds the list with a synchronous snapshot — used by
 // the CLI's pre-render of the cache so the list shows up before Bubble Tea
 // even starts dispatching commands.
@@ -265,7 +272,7 @@ func New(p themes.Palette, opts ...Option) Model {
 	if m.statePath != "" {
 		if st, err := state.Load(m.statePath); err == nil {
 			if st.Grouping != "" {
-				m.list.SetStrategy(grouping.ByName(st.Grouping))
+				m.list.SetStrategy(grouping.ByName(st.Grouping, m.epicTypes))
 			}
 			sortName := st.Sort
 			if sortName == "" {
@@ -811,7 +818,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case overlays.CreateCancelledMsg:
 		return m, nil
 	case overlays.OptionsAppliedMsg:
-		m.list.SetStrategy(grouping.ByName(msg.Grouping))
+		m.list.SetStrategy(grouping.ByName(msg.Grouping, m.epicTypes))
 		m.list.SetSort(grouping.SortByName(msg.Sort), msg.Desc)
 		if m.statePath != "" {
 			path := m.statePath

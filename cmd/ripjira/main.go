@@ -405,6 +405,7 @@ func runTUI(cfg *config.Config, client *jira.Client, _, _ io.Writer) error {
 		tui.WithLoader(tui.NewCachingLoader(tui.NewClientLoader(client))),
 		tui.WithCachePath(cachePath),
 		tui.WithDefaultProject(cfg.DefaultProject),
+		tui.WithEpicTypes(cfg.EpicIssueTypes),
 	}
 	if statePath, err := state.DefaultPath(); err == nil {
 		opts = append(opts, tui.WithStatePath(statePath))
