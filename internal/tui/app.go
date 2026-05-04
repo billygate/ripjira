@@ -71,9 +71,10 @@ type Model struct {
 	favorites  overlays.Favorites
 	link        overlays.Link
 	linkRemove  overlays.RemoveLink
-	worklog     overlays.Worklog
-	description overlays.Description
-	priority    overlays.Priority
+	worklog       overlays.Worklog
+	worklogRemove overlays.RemoveWorklog
+	description   overlays.Description
+	priority      overlays.Priority
 
 	list   panes.List
 	detail panes.Detail
@@ -106,7 +107,8 @@ type Model struct {
 
 	// pendingDeletedLink stores the just-removed link so handleLinkDeleteDone
 	// can re-append it on failure. Cleared on each result.
-	pendingDeletedLink jira.IssueLink
+	pendingDeletedLink    jira.IssueLink
+	pendingDeletedWorklog jira.Worklog
 
 	listToken  int
 	listCancel context.CancelFunc
@@ -129,8 +131,8 @@ func (m Model) canArmQuit() bool {
 	if m.help.Visible() || m.transition.Visible() || m.comment.Visible() ||
 		m.assign.Visible() || m.create.Visible() || m.options.Visible() ||
 		m.edit.Visible() || m.favorites.Visible() || m.link.Visible() ||
-		m.linkRemove.Visible() || m.worklog.Visible() || m.description.Visible() ||
-		m.priority.Visible() {
+		m.linkRemove.Visible() || m.worklog.Visible() || m.worklogRemove.Visible() ||
+		m.description.Visible() || m.priority.Visible() {
 		return false
 	}
 	if m.list.SearchEditing() || m.list.LocalFilterEditing() {
@@ -240,8 +242,9 @@ func New(p themes.Palette, opts ...Option) Model {
 		favorites:  overlays.NewFavorites(km.CloseOverlay),
 		link:       overlays.NewLink(km.CloseOverlay),
 		linkRemove:  overlays.NewRemoveLink(km.CloseOverlay),
-		worklog:     overlays.NewWorklog(km.CloseOverlay),
-		description: overlays.NewDescription(km.CloseOverlay),
+		worklog:       overlays.NewWorklog(km.CloseOverlay),
+		worklogRemove: overlays.NewRemoveWorklog(km.CloseOverlay),
+		description:   overlays.NewDescription(km.CloseOverlay),
 		priority:    overlays.NewPriority(km.CloseOverlay),
 		list:       panes.New(st, grouping.ByEpicAndPriority{}, 1, 1),
 		detail:     panes.NewDetail(st, panesNoopLoader{}, 1, 1),
@@ -338,18 +341,22 @@ func (m Model) sprintJQL() string {
 }
 
 // mentionsJQL returns the JQL backing the MENTIONS tab — issues whose
-// description, summary, or any comment contains the user's display name.
-// Imperfect (matches plain-text occurrences too, not just @-mentions),
-// but Jira does not expose a clean "mentions me" predicate. Empty when
-// the display name is not yet known so the loader skips the request.
+// comments mention the user. Jira does not expose a "mentioned me"
+// predicate, so we narrow to the `comment` field (rather than the
+// catch-all `text` field) and search for the display name. This matches
+// rendered "@displayName" tokens that Jira's mention macro produces, but
+// will also catch plain-text occurrences of the name. A perfect filter
+// would require fetching every candidate's comment ADF and verifying a
+// `mention` node with the user's accountId — left as future work.
+//
+// Empty when the display name is not yet known so the loader short-
+// circuits.
 func (m Model) mentionsJQL() string {
 	if strings.TrimSpace(m.displayName) == "" {
 		return ""
 	}
-	// Escape any embedded quotes — display names usually don't contain
-	// them, but defence in depth costs nothing.
 	escaped := strings.ReplaceAll(m.displayName, `"`, `\"`)
-	return `text ~ "` + escaped + `" ORDER BY updated DESC`
+	return `comment ~ "` + escaped + `" ORDER BY updated DESC`
 }
 
 // reorderByRecent sorts issues into the order they appear in m.recentKeys.
@@ -680,6 +687,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleDescriptionDone(msg)
 	case overlays.PrioritySelectedMsg:
 		return m.handlePrioritySelected(msg)
+	case overlays.WorklogDeletedMsg:
+		return m.handleWorklogDeletePicked(msg)
+	case worklogDeletedDoneMsg:
+		return m.handleWorklogDeleteDone(msg)
 	case watchDoneMsg:
 		return m.handleWatchDone(msg)
 	case overlays.WorklogSubmittedMsg:
@@ -943,6 +954,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.worklog, cmd = m.worklog.Update(msg)
 		return m, cmd
 	}
+	if m.worklogRemove.Visible() {
+		var cmd tea.Cmd
+		m.worklogRemove, cmd = m.worklogRemove.Update(msg)
+		return m, cmd
+	}
 	if m.description.Visible() {
 		var cmd tea.Cmd
 		m.description, cmd = m.description.Update(msg)
@@ -1058,6 +1074,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.dispatchWatch(false)
 	case key.Matches(msg, m.keymap.LogWork):
 		return m.openWorklogOverlay()
+	case key.Matches(msg, m.keymap.RemoveWorklog):
+		return m.openRemoveWorklogOverlay()
 	case key.Matches(msg, m.keymap.OpenOptions):
 		cur := m.list.Strategy().Name()
 		sortName := "priority"
@@ -1258,6 +1276,93 @@ func (m Model) handleWatchDone(msg watchDoneMsg) (tea.Model, tea.Cmd) {
 	}
 	toast := func() tea.Msg {
 		return ToastMsg{Text: verb + " " + msg.IssueKey, Level: ToastInfo}
+	}
+	return m, tea.Batch(stopSpinner, toast)
+}
+
+// openRemoveWorklogOverlay opens the worklog-remove picker over the
+// current issue's worklog list.
+func (m Model) openRemoveWorklogOverlay() (tea.Model, tea.Cmd) {
+	issue := m.detail.Issue()
+	if issue == nil {
+		return m, nil
+	}
+	entries := make([]overlays.WorklogEntry, 0, len(issue.Worklogs))
+	for _, w := range issue.Worklogs {
+		author := ""
+		if w.Author != nil {
+			author = w.Author.DisplayName
+		}
+		when := ""
+		if !w.Started.IsZero() {
+			when = w.Started.Format("2006-01-02")
+		}
+		entries = append(entries, overlays.WorklogEntry{
+			ID:        w.ID,
+			TimeSpent: w.TimeSpent,
+			Author:    author,
+			When:      when,
+		})
+	}
+	m.worklogRemove = m.worklogRemove.Show(issue.Key, entries)
+	return m, nil
+}
+
+// worklogDeletedDoneMsg carries the result of a DeleteWorklog call.
+type worklogDeletedDoneMsg struct {
+	IssueKey  string
+	WorklogID string
+	Err       error
+}
+
+// handleWorklogDeletePicked dispatches DeleteWorklog with optimistic
+// local removal. Stores a snapshot in the model so handleWorklogDeleteDone
+// can revert on failure.
+func (m Model) handleWorklogDeletePicked(msg overlays.WorklogDeletedMsg) (tea.Model, tea.Cmd) {
+	if m.loader == nil || msg.WorklogID == "" {
+		return m, nil
+	}
+	var prev jira.Worklog
+	if issue := m.detail.Issue(); issue != nil && issue.Key == msg.IssueKey {
+		for _, w := range issue.Worklogs {
+			if w.ID == msg.WorklogID {
+				prev = w
+				break
+			}
+		}
+	}
+	m.detail.RemoveWorklogByID(msg.IssueKey, msg.WorklogID)
+	m.pendingDeletedWorklog = prev
+
+	loader := m.loader
+	key, id := msg.IssueKey, msg.WorklogID
+	startSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: 1} }
+	call := func() tea.Msg {
+		err := loader.DeleteWorklog(context.Background(), key, id)
+		return worklogDeletedDoneMsg{IssueKey: key, WorklogID: id, Err: err}
+	}
+	return m, tea.Batch(startSpinner, call)
+}
+
+// handleWorklogDeleteDone toasts and reverts on failure.
+func (m Model) handleWorklogDeleteDone(msg worklogDeletedDoneMsg) (tea.Model, tea.Cmd) {
+	stopSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: -1} }
+	if msg.Err != nil {
+		if m.pendingDeletedWorklog.ID != "" {
+			m.detail.AppendWorklog(msg.IssueKey, m.pendingDeletedWorklog)
+		}
+		m.pendingDeletedWorklog = jira.Worklog{}
+		toast := func() tea.Msg {
+			return ToastMsg{
+				Text:  "Remove worklog failed: " + msg.Err.Error(),
+				Level: ToastError,
+			}
+		}
+		return m, tea.Batch(stopSpinner, toast)
+	}
+	m.pendingDeletedWorklog = jira.Worklog{}
+	toast := func() tea.Msg {
+		return ToastMsg{Text: "Worklog removed", Level: ToastInfo}
 	}
 	return m, tea.Batch(stopSpinner, toast)
 }
@@ -2340,6 +2445,9 @@ func (m Model) activeOverlay() string {
 		return v
 	}
 	if v := m.worklog.View(m.styles); v != "" {
+		return v
+	}
+	if v := m.worklogRemove.View(m.styles); v != "" {
 		return v
 	}
 	if v := m.description.View(m.styles); v != "" {

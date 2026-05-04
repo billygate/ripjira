@@ -45,6 +45,7 @@ type Keymap struct {
 	Watch              key.Binding
 	Unwatch            key.Binding
 	LogWork            key.Binding
+	RemoveWorklog      key.Binding
 	Help               key.Binding
 	CloseOverlay       key.Binding
 	Quit               key.Binding
@@ -192,6 +193,10 @@ func DefaultKeymap() Keymap {
 		LogWork: key.NewBinding(
 			key.WithKeys("t"),
 			key.WithHelp("t", "log time"),
+		),
+		RemoveWorklog: key.NewBinding(
+			key.WithKeys("ctrl+t"),
+			key.WithHelp("ctrl+t", "remove worklog"),
 		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),

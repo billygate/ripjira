@@ -24,6 +24,7 @@ type AppLoader interface {
 	AddWatcher(ctx context.Context, key, accountID string) error
 	RemoveWatcher(ctx context.Context, key, accountID string) error
 	AddWorklog(ctx context.Context, key, timeSpent, comment string) error
+	DeleteWorklog(ctx context.Context, key, worklogID string) error
 	GetMyself(ctx context.Context) (jira.User, error)
 	Projects(ctx context.Context) ([]jira.Project, error)
 	IssueTypesForProject(ctx context.Context, projectKey string) ([]jira.IssueType, error)
@@ -54,6 +55,7 @@ type jiraClient interface {
 	AddWatcher(ctx context.Context, key, accountID string) error
 	RemoveWatcher(ctx context.Context, key, accountID string) error
 	AddWorklog(ctx context.Context, key, timeSpent, comment string) error
+	DeleteWorklog(ctx context.Context, key, worklogID string) error
 	Myself(ctx context.Context) (jira.User, error)
 	Projects(ctx context.Context) ([]jira.Project, error)
 	IssueTypesForProject(ctx context.Context, projectKey string) ([]jira.IssueType, error)
@@ -174,6 +176,10 @@ func (l *clientLoader) RemoveWatcher(ctx context.Context, key, accountID string)
 
 func (l *clientLoader) AddWorklog(ctx context.Context, key, timeSpent, comment string) error {
 	return l.c.AddWorklog(ctx, key, timeSpent, comment)
+}
+
+func (l *clientLoader) DeleteWorklog(ctx context.Context, key, worklogID string) error {
+	return l.c.DeleteWorklog(ctx, key, worklogID)
 }
 
 func (l *clientLoader) GetMyself(ctx context.Context) (jira.User, error) {

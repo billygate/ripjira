@@ -35,6 +35,15 @@ type IssueType struct {
 // SubtaskRef is a lightweight reference to a child issue, sourced from
 // the parent's `fields.subtasks` array. Only the fields needed for
 // display are populated.
+// Worklog is a single time-entry on an issue.
+type Worklog struct {
+	ID        string
+	Author    *User
+	TimeSpent string // wire format: "1h 30m"
+	Seconds   int64
+	Started   time.Time
+}
+
 type SubtaskRef struct {
 	Key     string
 	Summary string
@@ -145,6 +154,7 @@ type Issue struct {
 	DueDate     string // YYYY-MM-DD; empty when not set
 	Description string // markdown converted from renderedFields HTML
 	Comments    []Comment
+	Worklogs    []Worklog
 	Links       []IssueLink
 	Subtasks    []SubtaskRef
 	Attachments []Attachment

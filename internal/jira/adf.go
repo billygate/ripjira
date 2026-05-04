@@ -15,9 +15,17 @@ type ADF struct {
 // ripjira produces is modelled here; unknown fields from server responses are
 // ignored.
 type ADFNode struct {
-	Type    string    `json:"type"`
-	Text    string    `json:"text,omitempty"`
-	Content []ADFNode `json:"content,omitempty"`
+	Type    string         `json:"type"`
+	Text    string         `json:"text,omitempty"`
+	Attrs   map[string]any `json:"attrs,omitempty"`
+	Marks   []ADFMark      `json:"marks,omitempty"`
+	Content []ADFNode      `json:"content,omitempty"`
+}
+
+// ADFMark is an inline mark such as strong, em, code, or link.
+type ADFMark struct {
+	Type  string         `json:"type"`
+	Attrs map[string]any `json:"attrs,omitempty"`
 }
 
 // textToADF converts plain text into an ADF document. Paragraphs are split on

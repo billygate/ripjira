@@ -63,6 +63,7 @@ func (l *countingLoader) RemoveWatcher(context.Context, string, string) error { 
 func (l *countingLoader) AddWorklog(context.Context, string, string, string) error {
 	return nil
 }
+func (l *countingLoader) DeleteWorklog(context.Context, string, string) error { return nil }
 func (l *countingLoader) GetMyself(context.Context) (jira.User, error) { return jira.User{}, nil }
 func (l *countingLoader) Projects(context.Context) ([]jira.Project, error)  { return nil, nil }
 func (l *countingLoader) IssueTypesForProject(context.Context, string) ([]jira.IssueType, error) {

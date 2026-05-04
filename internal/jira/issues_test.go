@@ -429,6 +429,30 @@ func TestRemoveWatcher(t *testing.T) {
 	}
 }
 
+func TestDeleteWorklog(t *testing.T) {
+	var (
+		gotMethod string
+		gotPath   string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv, "a@b.com", "tok")
+	if err := c.DeleteWorklog(context.Background(), "PROJ-9", "12345"); err != nil {
+		t.Fatalf("DeleteWorklog: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Fatalf("method: %s", gotMethod)
+	}
+	if gotPath != "/rest/api/3/issue/PROJ-9/worklog/12345" {
+		t.Fatalf("path: %s", gotPath)
+	}
+}
+
 func TestDeleteIssueLink(t *testing.T) {
 	var (
 		gotMethod string

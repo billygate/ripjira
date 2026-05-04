@@ -60,6 +60,7 @@ func (l *refreshLoader) DeleteLink(_ context.Context, _ string) error           
 func (l *refreshLoader) AddWatcher(_ context.Context, _, _ string) error          { return nil }
 func (l *refreshLoader) RemoveWatcher(_ context.Context, _, _ string) error       { return nil }
 func (l *refreshLoader) AddWorklog(_ context.Context, _, _, _ string) error       { return nil }
+func (l *refreshLoader) DeleteWorklog(_ context.Context, _, _ string) error        { return nil }
 func (l *refreshLoader) GetMyself(_ context.Context) (jira.User, error) { return jira.User{}, nil }
 func (l *refreshLoader) Projects(_ context.Context) ([]jira.Project, error) { return nil, nil }
 func (l *refreshLoader) IssueTypesForProject(_ context.Context, _ string) ([]jira.IssueType, error) {

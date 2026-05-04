@@ -246,6 +246,10 @@ func (s *stubLoader) AddWorklog(context.Context, string, string, string) error {
 	return nil
 }
 
+func (s *stubLoader) DeleteWorklog(context.Context, string, string) error {
+	return nil
+}
+
 func (s *stubLoader) GetMyself(_ context.Context) (jira.User, error) {
 	return jira.User{}, nil
 }
