@@ -1,5 +1,26 @@
 package tui
 
+import "github.com/billygate/ripjira/internal/jira"
+
+// epicsLoadedMsg is the result of an async SearchEpics dispatched while the
+// epic picker is open. IssueKey is the originating issue so a stale result
+// (the user already moved on) can be ignored.
+type epicsLoadedMsg struct {
+	IssueKey string
+	Epics    []jira.Issue
+	Err      error
+}
+
+// setParentDoneMsg signals completion of an in-flight SetParent. Err is
+// non-nil only on failure; the optimistic local update is reverted then.
+type setParentDoneMsg struct {
+	IssueKey     string
+	OldParentKey string
+	OldParentSum string
+	NewParentKey string
+	Err          error
+}
+
 // SelectionChangedMsg is published by the app when the list pane's selection
 // moves to a different issue. The app reacts by telling the detail pane to
 // switch issues, which in turn cancels any in-flight loads and starts new

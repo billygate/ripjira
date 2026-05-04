@@ -30,6 +30,8 @@ type AppLoader interface {
 	IssueTypesForProject(ctx context.Context, projectKey string) ([]jira.IssueType, error)
 	CreateMeta(ctx context.Context, projectKey, issueTypeID string) (jira.CreateMeta, error)
 	CreateIssue(ctx context.Context, p jira.CreatePayload) (jira.Issue, error)
+	SearchEpics(ctx context.Context, projectKey string, epicTypes []string) ([]jira.Issue, error)
+	SetParent(ctx context.Context, key, parentKey string) error
 }
 
 // jiraClient is the adapter from *jira.Client (or anything matching its
@@ -61,6 +63,8 @@ type jiraClient interface {
 	IssueTypesForProject(ctx context.Context, projectKey string) ([]jira.IssueType, error)
 	CreateMeta(ctx context.Context, projectKey, issueTypeID string) (jira.CreateMeta, error)
 	CreateIssue(ctx context.Context, p jira.CreatePayload) (jira.Issue, error)
+	SearchEpics(ctx context.Context, projectKey string, epicTypes []string) ([]jira.Issue, error)
+	SetParent(ctx context.Context, key, parentKey string) error
 }
 
 // NewClientLoader wraps a *jira.Client (or compatible interface) as an
@@ -200,4 +204,12 @@ func (l *clientLoader) CreateMeta(ctx context.Context, projectKey, issueTypeID s
 
 func (l *clientLoader) CreateIssue(ctx context.Context, p jira.CreatePayload) (jira.Issue, error) {
 	return l.c.CreateIssue(ctx, p)
+}
+
+func (l *clientLoader) SearchEpics(ctx context.Context, projectKey string, epicTypes []string) ([]jira.Issue, error) {
+	return l.c.SearchEpics(ctx, projectKey, epicTypes)
+}
+
+func (l *clientLoader) SetParent(ctx context.Context, key, parentKey string) error {
+	return l.c.SetParent(ctx, key, parentKey)
 }

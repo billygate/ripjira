@@ -264,6 +264,10 @@ func (s *stubLoader) CreateMeta(_ context.Context, _, _ string) (jira.CreateMeta
 func (s *stubLoader) CreateIssue(_ context.Context, _ jira.CreatePayload) (jira.Issue, error) {
 	return jira.Issue{}, nil
 }
+func (s *stubLoader) SearchEpics(_ context.Context, _ string, _ []string) ([]jira.Issue, error) {
+	return nil, nil
+}
+func (s *stubLoader) SetParent(_ context.Context, _, _ string) error { return nil }
 
 // TestStage2_EndToEnd is the integration check called out by Task 17 of the
 // plan: launch the app with a stub client, verify the list renders, navigate

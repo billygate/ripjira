@@ -75,6 +75,7 @@ type Model struct {
 	worklogRemove overlays.RemoveWorklog
 	description   overlays.Description
 	priority      overlays.Priority
+	epicPicker    overlays.Epic
 
 	list   panes.List
 	detail panes.Detail
@@ -133,7 +134,8 @@ func (m Model) canArmQuit() bool {
 		m.assign.Visible() || m.create.Visible() || m.options.Visible() ||
 		m.edit.Visible() || m.favorites.Visible() || m.link.Visible() ||
 		m.linkRemove.Visible() || m.worklog.Visible() || m.worklogRemove.Visible() ||
-		m.description.Visible() || m.priority.Visible() {
+		m.description.Visible() || m.priority.Visible() ||
+		m.epicPicker.Visible() {
 		return false
 	}
 	if m.list.SearchEditing() || m.list.LocalFilterEditing() {
@@ -253,6 +255,7 @@ func New(p themes.Palette, opts ...Option) Model {
 		worklogRemove: overlays.NewRemoveWorklog(km.CloseOverlay),
 		description:   overlays.NewDescription(km.CloseOverlay),
 		priority:    overlays.NewPriority(km.CloseOverlay),
+		epicPicker:  overlays.NewEpic(),
 		list:       panes.New(st, grouping.ByEpicAndPriority{}, 1, 1),
 		detail:     panes.NewDetail(st, panesNoopLoader{}, 1, 1),
 		browser:    OSOpener{},
@@ -694,6 +697,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleDescriptionDone(msg)
 	case overlays.PrioritySelectedMsg:
 		return m.handlePrioritySelected(msg)
+	case epicsLoadedMsg:
+		return m.handleEpicsLoaded(msg)
+	case overlays.EpicCancelledMsg:
+		m.epicPicker = m.epicPicker.Hide()
+		return m, nil
+	case overlays.EpicPickedMsg:
+		return m.handleEpicPicked(msg)
+	case setParentDoneMsg:
+		return m.handleSetParentDone(msg)
 	case overlays.WorklogDeletedMsg:
 		return m.handleWorklogDeletePicked(msg)
 	case worklogDeletedDoneMsg:
@@ -976,6 +988,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.priority, cmd = m.priority.Update(msg)
 		return m, cmd
 	}
+	if m.epicPicker.Visible() {
+		var cmd tea.Cmd
+		m.epicPicker, cmd = m.epicPicker.Update(msg)
+		return m, cmd
+	}
 	// While the list pane's search input is being edited, the input must
 	// own the keypress — otherwise typing "n", "s", etc. would trigger
 	// global hotkeys (open create, open status…) instead of going into
@@ -1071,6 +1088,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openEditOverlay(overlays.EditDueDate)
 	case key.Matches(msg, m.keymap.EditDescription):
 		return m.openDescriptionOverlay()
+	case key.Matches(msg, m.keymap.EditEpic):
+		return m.openEpicPicker()
 	case key.Matches(msg, m.keymap.AddLink):
 		return m.openLinkOverlay()
 	case key.Matches(msg, m.keymap.RemoveLink):
@@ -1449,6 +1468,141 @@ func (m Model) handlePrioritySelected(msg overlays.PrioritySelectedMsg) (tea.Mod
 		Field:    overlays.EditPriority,
 		Value:    msg.Name,
 	})
+}
+
+// openEpicPicker opens the epic-link picker for the current issue and
+// dispatches a SearchEpics call to populate it. The project is derived
+// from the issue key prefix (e.g. "BILLING-123" → "BILLING").
+func (m Model) openEpicPicker() (tea.Model, tea.Cmd) {
+	issue := m.detail.Issue()
+	if issue == nil {
+		issue = m.list.Selected()
+	}
+	if issue == nil {
+		return m, nil
+	}
+	if m.loader == nil {
+		return m, nil
+	}
+	m.epicPicker = m.epicPicker.Show(issue.Key, issue.ParentKey)
+	return m, m.searchEpicsCmd(issue.Key)
+}
+
+// projectKeyOf returns the project portion of a Jira issue key
+// ("BILLING-123" → "BILLING"). Returns the input unchanged when no
+// hyphen is present.
+func projectKeyOf(issueKey string) string {
+	if i := strings.IndexByte(issueKey, '-'); i > 0 {
+		return issueKey[:i]
+	}
+	return issueKey
+}
+
+// searchEpicsCmd builds the tea.Cmd that calls SearchEpics for the
+// project the issue belongs to.
+func (m Model) searchEpicsCmd(issueKey string) tea.Cmd {
+	loader := m.loader
+	project := projectKeyOf(issueKey)
+	types := append([]string(nil), m.epicTypes...)
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		epics, err := loader.SearchEpics(ctx, project, types)
+		return epicsLoadedMsg{IssueKey: issueKey, Epics: epics, Err: err}
+	}
+}
+
+// handleEpicsLoaded consumes the SearchEpics result. Stale results (the
+// user closed or moved on) are dropped.
+func (m Model) handleEpicsLoaded(msg epicsLoadedMsg) (tea.Model, tea.Cmd) {
+	if msg.Err != nil {
+		m.epicPicker = m.epicPicker.Hide()
+		toast := func() tea.Msg {
+			return ToastMsg{
+				Text:  "Could not load epics: " + msg.Err.Error(),
+				Level: ToastError,
+			}
+		}
+		return m, toast
+	}
+	if !m.epicPicker.Visible() || m.epicPicker.IssueKey() != msg.IssueKey {
+		return m, nil
+	}
+	m.epicPicker = m.epicPicker.SetEpics(msg.Epics)
+	return m, nil
+}
+
+// handleEpicPicked applies the picked epic optimistically and dispatches
+// SetParent. On error the previous parent is restored via setParentDoneMsg.
+func (m Model) handleEpicPicked(msg overlays.EpicPickedMsg) (tea.Model, tea.Cmd) {
+	loaded := m.epicPicker.LoadedEpics()
+	m.epicPicker = m.epicPicker.Hide()
+	if m.loader == nil {
+		return m, nil
+	}
+
+	var oldKey, oldSum string
+	if issue := m.detail.Issue(); issue != nil && issue.Key == msg.IssueKey {
+		oldKey = issue.ParentKey
+		oldSum = issue.ParentSummary
+	} else {
+		for _, is := range m.list.Issues() {
+			if is.Key == msg.IssueKey {
+				oldKey = is.ParentKey
+				oldSum = is.ParentSummary
+				break
+			}
+		}
+	}
+	if oldKey == msg.ParentKey {
+		return m, nil
+	}
+
+	newSum := ""
+	for _, ep := range loaded {
+		if ep.Key == msg.ParentKey {
+			newSum = ep.Summary
+			break
+		}
+	}
+
+	m.list.UpdateIssueParent(msg.IssueKey, msg.ParentKey, newSum)
+	m.detail.UpdateParent(msg.IssueKey, msg.ParentKey, newSum)
+
+	loader := m.loader
+	issueKey, parentKey := msg.IssueKey, msg.ParentKey
+	startSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: 1} }
+	call := func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		err := loader.SetParent(ctx, issueKey, parentKey)
+		return setParentDoneMsg{
+			IssueKey:     issueKey,
+			OldParentKey: oldKey,
+			OldParentSum: oldSum,
+			NewParentKey: parentKey,
+			Err:          err,
+		}
+	}
+	return m, tea.Batch(startSpinner, call)
+}
+
+// handleSetParentDone consumes the SetParent result, reverting the
+// optimistic update on failure.
+func (m Model) handleSetParentDone(msg setParentDoneMsg) (tea.Model, tea.Cmd) {
+	stopSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: -1} }
+	if msg.Err != nil {
+		m.list.UpdateIssueParent(msg.IssueKey, msg.OldParentKey, msg.OldParentSum)
+		m.detail.UpdateParent(msg.IssueKey, msg.OldParentKey, msg.OldParentSum)
+		toast := func() tea.Msg {
+			return ToastMsg{
+				Text:  "Could not set epic: " + msg.Err.Error(),
+				Level: ToastError,
+			}
+		}
+		return m, tea.Batch(stopSpinner, toast)
+	}
+	return m, stopSpinner
 }
 
 // openDescriptionOverlay opens the description-edit textarea, prefilled
@@ -2461,6 +2615,9 @@ func (m Model) activeOverlay() string {
 		return v
 	}
 	if v := m.priority.View(m.styles); v != "" {
+		return v
+	}
+	if v := m.epicPicker.View(m.styles); v != "" {
 		return v
 	}
 	return ""

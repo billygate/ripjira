@@ -40,6 +40,7 @@ type Keymap struct {
 	EditLabels         key.Binding
 	EditDueDate        key.Binding
 	EditDescription    key.Binding
+	EditEpic           key.Binding
 	AddLink            key.Binding
 	RemoveLink         key.Binding
 	Watch              key.Binding
@@ -173,6 +174,10 @@ func DefaultKeymap() Keymap {
 		EditDescription: key.NewBinding(
 			key.WithKeys("M"),
 			key.WithHelp("M", "edit description"),
+		),
+		EditEpic: key.NewBinding(
+			key.WithKeys("E"),
+			key.WithHelp("E", "set epic"),
 		),
 		AddLink: key.NewBinding(
 			key.WithKeys("+"),

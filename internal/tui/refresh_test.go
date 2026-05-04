@@ -72,6 +72,10 @@ func (l *refreshLoader) CreateMeta(_ context.Context, _, _ string) (jira.CreateM
 func (l *refreshLoader) CreateIssue(_ context.Context, _ jira.CreatePayload) (jira.Issue, error) {
 	return jira.Issue{}, nil
 }
+func (l *refreshLoader) SearchEpics(_ context.Context, _ string, _ []string) ([]jira.Issue, error) {
+	return nil, nil
+}
+func (l *refreshLoader) SetParent(_ context.Context, _, _ string) error { return nil }
 
 func newRefreshModel(t *testing.T, opts ...Option) (Model, *refreshLoader) {
 	t.Helper()

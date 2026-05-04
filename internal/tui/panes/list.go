@@ -240,6 +240,21 @@ func (m *List) UpdateIssueDueDate(key, dueDate string) bool {
 	return false
 }
 
+// UpdateIssueParent replaces the parent epic key/summary of the issue with
+// the given key and rebuilds the view. Used by optimistic epic-link edits.
+// Returns true when the key was found.
+func (m *List) UpdateIssueParent(key, parentKey, parentSummary string) bool {
+	for i := range m.issues {
+		if m.issues[i].Key == key {
+			m.issues[i].ParentKey = parentKey
+			m.issues[i].ParentSummary = parentSummary
+			m.rebuild()
+			return true
+		}
+	}
+	return false
+}
+
 // UpdateIssueAssignee replaces the Assignee of the issue with the given key
 // in the source list and rebuilds the view. Returns true when the key was
 // found. Used by optimistic assignee updates from the assign overlay.

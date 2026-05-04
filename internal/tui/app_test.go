@@ -459,6 +459,10 @@ func (l *recordingLoader) CreateMeta(context.Context, string, string) (jira.Crea
 func (l *recordingLoader) CreateIssue(context.Context, jira.CreatePayload) (jira.Issue, error) {
 	return jira.Issue{}, nil
 }
+func (l *recordingLoader) SearchEpics(context.Context, string, []string) ([]jira.Issue, error) {
+	return nil, nil
+}
+func (l *recordingLoader) SetParent(context.Context, string, string) error { return nil }
 
 func newTestAppModelWithLoader(t *testing.T, w, h int, l AppLoader) Model {
 	t.Helper()
