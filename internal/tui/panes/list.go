@@ -670,6 +670,10 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
 			caret = "▸"
 		}
 		line := fmt.Sprintf("%s %s  (%d)", caret, it.GroupKey, it.Count)
+		// Group label may be a parent epic line "KEY  Long summary" — clamp.
+		if budget := m.Width() - 1; budget > 4 && lipgloss.Width(line) > budget {
+			line = truncate(line, budget)
+		}
 		styled := d.styles.GroupHeader.Render(line)
 		if selected {
 			styled = d.styles.ListItemSelected.Render(line)
@@ -678,14 +682,19 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
 		return
 	}
 	icon := grouping.PriorityIcon(it.Issue.Priority.Name)
-	width := max(it.NumWidth, 1)
+	numW := max(it.NumWidth, 1)
 	numStr := ""
-	if it.Number > 0 && it.Number <= intPow10(width)-1 {
-		numStr = fmt.Sprintf("%*d", width, it.Number)
+	if it.Number > 0 && it.Number <= intPow10(numW)-1 {
+		numStr = fmt.Sprintf("%*d", numW, it.Number)
 	} else {
-		numStr = strings.Repeat(" ", width)
+		numStr = strings.Repeat(" ", numW)
 	}
-	line := fmt.Sprintf("  %s %-10s %s %s", numStr, it.Issue.Key, icon, truncate(it.Issue.Summary, 60))
+	prefix := fmt.Sprintf("  %s %-10s %s ", numStr, it.Issue.Key, icon)
+	// Pane width minus the prefix; clamp to a sane minimum so very narrow
+	// terminals still render *something* readable rather than just an
+	// ellipsis.
+	budget := max(m.Width()-lipgloss.Width(prefix)-1, 8)
+	line := prefix + truncate(it.Issue.Summary, budget)
 	styled := d.styles.ListItem.Render(line)
 	if selected {
 		styled = d.styles.ListItemSelected.Render(line)
