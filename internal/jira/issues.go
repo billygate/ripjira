@@ -442,6 +442,46 @@ func (c *Client) UpdateDescription(ctx context.Context, key, body string) error 
 	return c.UpdateIssue(ctx, key, map[string]any{"description": doc})
 }
 
+// SetParent attaches issue key to parentKey, or detaches it when
+// parentKey is empty (Jira interprets {"parent": null} as a removal).
+func (c *Client) SetParent(ctx context.Context, key, parentKey string) error {
+	if key == "" {
+		return errors.New("jira: issue key is required")
+	}
+	var parent any
+	if parentKey != "" {
+		parent = map[string]string{"key": parentKey}
+	}
+	return c.UpdateIssue(ctx, key, map[string]any{"parent": parent})
+}
+
+// SearchEpics returns candidate parent epics for projectKey, restricted
+// to the given issue type names (the project's epic-shaped types from
+// the Field Configuration), ordered most-recently-updated first.
+func (c *Client) SearchEpics(ctx context.Context, projectKey string, epicTypes []string) ([]Issue, error) {
+	if projectKey == "" {
+		return nil, errors.New("jira: project key is required")
+	}
+	if len(epicTypes) == 0 {
+		return nil, errors.New("jira: epic types list is empty")
+	}
+	return c.Search(ctx, buildEpicJQL(projectKey, epicTypes))
+}
+
+func buildEpicJQL(projectKey string, epicTypes []string) string {
+	q := func(s string) string {
+		s = strings.ReplaceAll(s, `\`, `\\`)
+		s = strings.ReplaceAll(s, `"`, `\"`)
+		return `"` + s + `"`
+	}
+	parts := make([]string, len(epicTypes))
+	for i, t := range epicTypes {
+		parts[i] = q(t)
+	}
+	return fmt.Sprintf(`project = %s AND issuetype IN (%s) ORDER BY updated DESC`,
+		q(projectKey), strings.Join(parts, ", "))
+}
+
 // AddWorklog logs work against issue. timeSpent uses Jira's compact
 // format ("1h 30m", "2d", "45m") and is validated server-side. comment is
 // optional; when non-empty it is sent as an ADF paragraph.

@@ -848,3 +848,88 @@ func TestDtoToIssue_NoParent(t *testing.T) {
 		t.Errorf("expected empty parent, got key=%q sum=%q", got.ParentKey, got.ParentSummary)
 	}
 }
+
+func TestSetParent_AttachAndDetach(t *testing.T) {
+	type capture struct {
+		method string
+		path   string
+		body   map[string]any
+	}
+	got := capture{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.method = r.Method
+		got.path = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&got.body)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv, "a@b.com", "tok")
+
+	if err := c.SetParent(context.Background(), "BILLING-10328", "BILLING-10319"); err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	if got.method != "PUT" || got.path != "/rest/api/3/issue/BILLING-10328" {
+		t.Fatalf("attach req: %s %s", got.method, got.path)
+	}
+	fields, _ := got.body["fields"].(map[string]any)
+	parent, _ := fields["parent"].(map[string]any)
+	if parent["key"] != "BILLING-10319" {
+		t.Fatalf("attach body: %#v", got.body)
+	}
+
+	got.body = nil
+	if err := c.SetParent(context.Background(), "BILLING-10328", ""); err != nil {
+		t.Fatalf("detach: %v", err)
+	}
+	fields, _ = got.body["fields"].(map[string]any)
+	if v, ok := fields["parent"]; !ok || v != nil {
+		t.Fatalf("detach should send parent: null, got %#v (ok=%v)", v, ok)
+	}
+}
+
+func TestSetParent_RejectsEmptyKey(t *testing.T) {
+	c, err := NewClient("https://x.atlassian.net", "a@b.com", "tok")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if err := c.SetParent(context.Background(), "", "BILLING-1"); err == nil {
+		t.Fatal("empty key should error")
+	}
+}
+
+func TestSearchEpics_BuildsJQL(t *testing.T) {
+	var capturedJQL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedJQL = r.URL.Query().Get("jql")
+		_, _ = io.WriteString(w, `{"issues":[{"key":"BILLING-10319","fields":{"summary":"Deploy","issuetype":{"name":"Epic Feature"}}}],"isLast":true}`)
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv, "a@b.com", "tok")
+
+	got, err := c.SearchEpics(context.Background(), "BILLING", []string{"Epic", "Epic Feature"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(got) != 1 || got[0].Key != "BILLING-10319" {
+		t.Fatalf("results: %#v", got)
+	}
+	if !strings.Contains(capturedJQL, `project = "BILLING"`) ||
+		!strings.Contains(capturedJQL, `"Epic"`) ||
+		!strings.Contains(capturedJQL, `"Epic Feature"`) ||
+		!strings.Contains(capturedJQL, "ORDER BY updated DESC") {
+		t.Fatalf("jql = %q", capturedJQL)
+	}
+}
+
+func TestSearchEpics_RejectsEmptyArgs(t *testing.T) {
+	c, err := NewClient("https://x.atlassian.net", "a@b.com", "tok")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if _, err := c.SearchEpics(context.Background(), "", []string{"Epic"}); err == nil {
+		t.Fatal("empty project should error")
+	}
+	if _, err := c.SearchEpics(context.Background(), "BILLING", nil); err == nil {
+		t.Fatal("empty types should error")
+	}
+}
