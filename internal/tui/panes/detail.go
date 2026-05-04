@@ -681,6 +681,13 @@ func (d *Detail) refreshContent() {
 	} else {
 		b.WriteString("Assignee:  unassigned\n")
 	}
+	if d.issue.ParentKey != "" {
+		if d.issue.ParentSummary != "" {
+			fmt.Fprintf(&b, "Epic:      %s  %s\n", d.issue.ParentKey, d.issue.ParentSummary)
+		} else {
+			fmt.Fprintf(&b, "Epic:      %s\n", d.issue.ParentKey)
+		}
+	}
 	if len(d.issue.Labels) > 0 {
 		fmt.Fprintf(&b, "Labels:    %s\n", strings.Join(d.issue.Labels, ", "))
 	}

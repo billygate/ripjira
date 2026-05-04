@@ -527,3 +527,41 @@ func TestDetail_AppendSubtaskRejectsKeyMismatch(t *testing.T) {
 		t.Fatal("AppendSubtask should have rejected mismatched key")
 	}
 }
+
+func TestDetail_RendersEpicWithSummary(t *testing.T) {
+	d := newDetail(t, newStubLoader())
+	d.SetIssue(&jira.Issue{
+		Key:           "BILLING-1",
+		Summary:       "task",
+		ParentKey:     "BILLING-100",
+		ParentSummary: "Setup deploy",
+	})
+	view := stripANSI(d.View())
+	if !strings.Contains(view, "BILLING-100") || !strings.Contains(view, "Setup deploy") {
+		t.Fatalf("expected epic key + summary, got:\n%s", view)
+	}
+	if !strings.Contains(view, "Epic") {
+		t.Fatalf("expected Epic label, got:\n%s", view)
+	}
+}
+
+func TestDetail_RendersEpicKeyOnlyWhenSummaryEmpty(t *testing.T) {
+	d := newDetail(t, newStubLoader())
+	d.SetIssue(&jira.Issue{Key: "BILLING-1", ParentKey: "BILLING-200"})
+	view := stripANSI(d.View())
+	if !strings.Contains(view, "BILLING-200") {
+		t.Fatalf("expected key, got:\n%s", view)
+	}
+	if strings.Contains(view, "Setup deploy") {
+		t.Fatalf("should not invent a summary, got:\n%s", view)
+	}
+}
+
+func TestDetail_NoEpicRowWhenAbsent(t *testing.T) {
+	d := newDetail(t, newStubLoader())
+	d.SetIssue(&jira.Issue{Key: "BILLING-1", ParentKey: ""})
+	view := stripANSI(d.View())
+	if strings.Contains(view, "Epic") {
+		t.Fatalf("did not expect Epic row, got:\n%s", view)
+	}
+}
