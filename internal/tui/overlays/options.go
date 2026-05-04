@@ -28,8 +28,7 @@ var optionsGroupings = []struct {
 }{
 	{"status", "Status"},
 	{"priority", "Priority"},
-	{"epic", "Epic"},
-	{"parent", "Parent (epic)"},
+	{"parent", "Epic"},
 }
 
 var optionsSorts = []struct {

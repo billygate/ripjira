@@ -291,7 +291,7 @@ func New(p themes.Palette, opts ...Option) Model {
 		epicPicker:   overlays.NewEpic(),
 		structPicker: overlays.NewStructures(km.CloseOverlay),
 		topGo:        overlays.NewTopGo(km.CloseOverlay),
-		list:       panes.New(st, grouping.ByEpicAndPriority{}, 1, 1),
+		list:       panes.New(st, grouping.ByStatus{}, 1, 1),
 		detail:     panes.NewDetail(st, panesNoopLoader{}, 1, 1),
 		browser:    OSOpener{},
 	}
@@ -2847,7 +2847,7 @@ func (m Model) handleViewSelected(v panes.ViewKind) (tea.Model, tea.Cmd) {
 	m.persistLastView(v)
 	switch v {
 	case panes.ViewMyTasks:
-		m.list.SetStrategy(grouping.ByEpicAndPriority{})
+		m.list.SetStrategy(grouping.ByParent{EpicTypes: m.epicTypes})
 	case panes.ViewWatching, panes.ViewReported, panes.ViewSearch, panes.ViewSprint, panes.ViewMentions:
 		m.list.SetStrategy(grouping.ByStatus{})
 	case panes.ViewRecent:

@@ -126,38 +126,6 @@ func (ByPriority) Group(issues []jira.Issue) []Group {
 	return out
 }
 
-// ByEpicAndPriority groups issues into two buckets — "Epics" first
-// (issues whose Type.Name is "Epic", case-insensitive), then "Tasks"
-// (everything else). Within each bucket issues are ordered by priority
-// using the same Highest → Lowest scale ByPriority uses; ties break by
-// Updated DESC. Empty buckets are omitted from the output.
-type ByEpicAndPriority struct{}
-
-// Name implements Strategy.
-func (ByEpicAndPriority) Name() string { return "epic" }
-
-// Group implements Strategy.
-func (ByEpicAndPriority) Group(issues []jira.Issue) []Group {
-	var epics, tasks []jira.Issue
-	for _, is := range issues {
-		if strings.EqualFold(is.Type.Name, "Epic") {
-			epics = append(epics, is)
-		} else {
-			tasks = append(tasks, is)
-		}
-	}
-	sortByPriorityDesc(epics)
-	sortByPriorityDesc(tasks)
-	out := make([]Group, 0, 2)
-	if len(epics) > 0 {
-		out = append(out, Group{Key: "Epics", Issues: epics})
-	}
-	if len(tasks) > 0 {
-		out = append(out, Group{Key: "Tasks", Issues: tasks})
-	}
-	return out
-}
-
 // sortByPriorityDesc orders issues by priority rank (Highest → Lowest →
 // Unknown); ties break by Updated DESC.
 func sortByPriorityDesc(issues []jira.Issue) {
@@ -254,9 +222,8 @@ func ByName(name string, epicTypes []string) Strategy {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "priority":
 		return ByPriority{}
-	case "epic":
-		return ByEpicAndPriority{}
-	case "parent":
+	case "parent", "epic":
+		// Legacy "epic" config value mapped to the same parent-aware strategy.
 		return ByParent{EpicTypes: epicTypes}
 	}
 	return ByStatus{}

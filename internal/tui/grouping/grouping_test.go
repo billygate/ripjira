@@ -3,7 +3,6 @@ package grouping_test
 import (
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/billygate/ripjira/internal/jira"
 	"github.com/billygate/ripjira/internal/tui/grouping"
@@ -137,8 +136,9 @@ func TestByName(t *testing.T) {
 		"status":   "status",
 		"STATUS":   "status",
 		"priority": "priority",
-		"epic":     "epic",
-		"EPIC":     "epic",
+		"epic":     "parent",
+		"EPIC":     "parent",
+		"parent":   "parent",
 		"":         "status",
 		"unknown":  "status",
 	}
@@ -166,92 +166,10 @@ func TestPriorityIcon(t *testing.T) {
 	}
 }
 
-func TestByEpicAndPriority_Name(t *testing.T) {
-	if got := (grouping.ByEpicAndPriority{}).Name(); got != "epic" {
-		t.Errorf("ByEpicAndPriority.Name = %q, want %q", got, "epic")
-	}
-}
-
-func issueWithType(key, typeName, priority string) jira.Issue {
-	return jira.Issue{
-		Key:      key,
-		Type:     jira.IssueType{Name: typeName},
-		Priority: jira.Priority{Name: priority},
-	}
-}
-
-func TestByEpicAndPriority_TwoBucketsInOrder(t *testing.T) {
-	issues := []jira.Issue{
-		issueWithType("E-1", "Epic", "Medium"),
-		issueWithType("T-1", "Task", "Low"),
-		issueWithType("E-2", "EPIC", "Highest"),
-		issueWithType("T-2", "Bug", "High"),
-		issueWithType("T-3", "Story", "Lowest"),
-	}
-	groups := grouping.ByEpicAndPriority{}.Group(issues)
-	if len(groups) != 2 {
-		t.Fatalf("groups = %d, want 2", len(groups))
-	}
-	if groups[0].Key != "Epics" || groups[1].Key != "Tasks" {
-		t.Errorf("group keys = %s,%s; want Epics,Tasks", groups[0].Key, groups[1].Key)
-	}
-	wantEpicOrder := []string{"E-2", "E-1"} // Highest before Medium
-	for i, want := range wantEpicOrder {
-		if groups[0].Issues[i].Key != want {
-			t.Errorf("epics[%d] = %s, want %s", i, groups[0].Issues[i].Key, want)
-		}
-	}
-	wantTaskOrder := []string{"T-2", "T-1", "T-3"} // High, Low, Lowest
-	for i, want := range wantTaskOrder {
-		if groups[1].Issues[i].Key != want {
-			t.Errorf("tasks[%d] = %s, want %s", i, groups[1].Issues[i].Key, want)
-		}
-	}
-}
-
-func TestByEpicAndPriority_OmitsEmptyBuckets(t *testing.T) {
-	onlyTasks := []jira.Issue{
-		issueWithType("T-1", "Task", "High"),
-		issueWithType("T-2", "Bug", "Low"),
-	}
-	groups := grouping.ByEpicAndPriority{}.Group(onlyTasks)
-	if len(groups) != 1 || groups[0].Key != "Tasks" {
-		t.Fatalf("expected only Tasks bucket, got %+v", groups)
-	}
-
-	onlyEpics := []jira.Issue{
-		issueWithType("E-1", "Epic", "High"),
-	}
-	groups = grouping.ByEpicAndPriority{}.Group(onlyEpics)
-	if len(groups) != 1 || groups[0].Key != "Epics" {
-		t.Fatalf("expected only Epics bucket, got %+v", groups)
-	}
-}
-
-func TestByEpicAndPriority_TieBreakByUpdatedDesc(t *testing.T) {
-	older := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	newer := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
-	issues := []jira.Issue{
-		{Key: "T-old", Type: jira.IssueType{Name: "Task"}, Priority: jira.Priority{Name: "High"}, Updated: older},
-		{Key: "T-new", Type: jira.IssueType{Name: "Task"}, Priority: jira.Priority{Name: "High"}, Updated: newer},
-	}
-	groups := grouping.ByEpicAndPriority{}.Group(issues)
-	if groups[0].Issues[0].Key != "T-new" {
-		t.Errorf("tie break: first = %s, want T-new", groups[0].Issues[0].Key)
-	}
-}
-
-func TestByEpicAndPriority_Empty(t *testing.T) {
-	if g := (grouping.ByEpicAndPriority{}).Group(nil); len(g) != 0 {
-		t.Errorf("nil input → %d groups, want 0", len(g))
-	}
-}
-
 // Compile-time assertion that both impls satisfy Strategy.
 var (
 	_ grouping.Strategy = grouping.ByStatus{}
 	_ grouping.Strategy = grouping.ByPriority{}
-	_ grouping.Strategy = grouping.ByEpicAndPriority{}
 	_ grouping.Strategy = grouping.ByParent{}
 )
 
@@ -303,9 +221,9 @@ func TestByName_ParentReturnsByParent(t *testing.T) {
 	}
 }
 
-func TestByName_EpicStaysByEpic(t *testing.T) {
-	if _, ok := grouping.ByName("epic", nil).(grouping.ByEpicAndPriority); !ok {
-		t.Fatalf("epic should still map to ByEpicAndPriority")
+func TestByName_EpicAliasMapsToParent(t *testing.T) {
+	if _, ok := grouping.ByName("epic", nil).(grouping.ByParent); !ok {
+		t.Fatalf("legacy 'epic' name should now map to ByParent")
 	}
 }
 
