@@ -23,7 +23,6 @@ func TestValidate_Errors(t *testing.T) {
 		"no sections":         {ID: "u1", Name: "n"},
 		"empty section title": {ID: "u1", Name: "n", Sections: []Section{{Filter: SectionFilter{"status": In("Open")}}}},
 		"empty clause":        {ID: "u1", Name: "n", Sections: []Section{{Title: "T", Filter: SectionFilter{"status": {}}}}},
-		"unknown groupby":     {ID: "u1", Name: "n", Sections: []Section{{Title: "T", GroupBy: []string{"weird"}, Filter: SectionFilter{"status": In("X")}}}},
 		"bad regex":           {ID: "u1", Name: "n", Sections: []Section{{Title: "T", Filter: SectionFilter{"status": {Regex: "(["}}}}},
 		"bad order field":     {ID: "u1", Name: "n", Sections: []Section{{Title: "T", Filter: SectionFilter{"status": {Exists: &yes}}, OrderBy: []SortKey{{Field: "weird", Dir: SortDirAsc}}}}},
 		"bad order dir":       {ID: "u1", Name: "n", Sections: []Section{{Title: "T", Filter: SectionFilter{"status": {Exists: &yes}}, OrderBy: []SortKey{{Field: SortFieldPriority, Dir: "sideways"}}}}},

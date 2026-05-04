@@ -17,6 +17,61 @@ type AppliedSection struct {
 	Issues  []Issue
 }
 
+// TreeNode is one node in a multi-level group_by tree. Leaf nodes
+// (Children == nil) carry the matched issues; interior nodes carry only the
+// nested children. Paths are unique strings (joined with "/") that the UI
+// uses as stable keys for collapse state.
+type TreeNode struct {
+	Title    string
+	Path     string
+	Depth    int
+	Children []TreeNode
+	Issues   []Issue
+}
+
+// GroupTree recursively buckets issues by groupBy levels. Returns one root
+// per distinct value at the first level; each sub-level recurses. When
+// groupBy is empty, returns a single anonymous node containing every issue.
+func GroupTree(issues []Issue, groupBy []string, parentPath string, depth int) []TreeNode {
+	if len(groupBy) == 0 {
+		return []TreeNode{{
+			Path:   parentPath,
+			Depth:  depth,
+			Issues: issues,
+		}}
+	}
+	field := groupBy[0]
+	keys := []string{}
+	buckets := map[string][]Issue{}
+	for _, is := range issues {
+		v := is.Field(field)
+		if v == "" {
+			v = "(none)"
+		}
+		if _, ok := buckets[v]; !ok {
+			keys = append(keys, v)
+		}
+		buckets[v] = append(buckets[v], is)
+	}
+	out := make([]TreeNode, 0, len(keys))
+	for _, k := range keys {
+		path := k
+		if parentPath != "" {
+			path = parentPath + "/" + k
+		}
+		title := field + ": " + k
+		children := GroupTree(buckets[k], groupBy[1:], path, depth+1)
+		// Last-level descendants store issues directly; pass them through.
+		out = append(out, TreeNode{
+			Title:    title,
+			Path:     path,
+			Depth:    depth,
+			Children: children,
+		})
+	}
+	return out
+}
+
 // Apply runs each section's filter+anyOf over issues and returns one
 // AppliedSection per non-empty section, in declaration order. Empty
 // sections (zero matches) are dropped.

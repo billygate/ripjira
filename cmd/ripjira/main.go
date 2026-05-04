@@ -275,6 +275,13 @@ func buildClient() (*config.Config, *jira.Client, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("build jira client: %w", err)
 	}
+	if len(cfg.CustomFields) > 0 {
+		ids := make([]string, 0, len(cfg.CustomFields))
+		for _, id := range cfg.CustomFields {
+			ids = append(ids, id)
+		}
+		client.SetExtraFields(ids)
+	}
 	return cfg, client, nil
 }
 
@@ -407,6 +414,7 @@ func runTUI(cfg *config.Config, client *jira.Client, _, _ io.Writer) error {
 		tui.WithCachePath(cachePath),
 		tui.WithDefaultProject(cfg.DefaultProject),
 		tui.WithEpicTypes(cfg.EpicIssueTypes),
+		tui.WithCustomFields(cfg.CustomFields),
 	}
 	if statePath, err := state.DefaultPath(); err == nil {
 		opts = append(opts, tui.WithStatePath(statePath))

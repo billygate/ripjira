@@ -164,4 +164,10 @@ type Issue struct {
 	Updated     time.Time
 	Transitions []Transition
 	URL         string // baseURL + "/browse/" + Key
+
+	// CustomFields holds raw text-rendered values for any customfield_<id>
+	// the client was configured to fetch. Keys are the Jira field IDs
+	// (e.g. "customfield_12345"); the structure adapter maps user-friendly
+	// names to IDs via configuration.
+	CustomFields map[string]string
 }

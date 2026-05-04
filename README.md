@@ -146,6 +146,18 @@ provides OR semantics. Built-in field names: `status`, `status_category`,
 `priority`, `issuetype`, `assignee`, `reporter`, `parent_key`, `labels`,
 `project`.
 
+`group_by` accepts multiple field names; the list-pane renders them as a
+collapsible tree (default-collapsed). Custom Jira fields can be referenced
+by short name once mapped in `~/.config/ripjira/config.yaml`:
+
+```yaml
+custom_fields:
+  billing_team: customfield_12345
+```
+
+Then `group_by: [labels, billing_team, parent_key]` produces a three-level
+hierarchy.
+
 ## Themes
 
 Set `theme:` in `~/.config/ripjira/config.yaml` to any of:
