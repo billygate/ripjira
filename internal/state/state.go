@@ -37,6 +37,10 @@ type State struct {
 	// each top-tab so `}`/`{` returns to the user's previous scope rather
 	// than always landing on the first sub-tab. Keys are TopTabKind ints.
 	LastSubView map[int]int `json:"lastSubView,omitempty"`
+
+	// LastView is the ViewKind active at exit. The next session boots into
+	// it instead of the zero-value ViewMyTasks.
+	LastView *int `json:"lastView,omitempty"`
 }
 
 // Favorite is a named JQL query the user has saved for re-use. Names are

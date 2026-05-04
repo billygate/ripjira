@@ -317,6 +317,13 @@ func New(p themes.Palette, opts ...Option) Model {
 			for k, v := range st.LastSubView {
 				m.lastSubView[panes.TopTabKind(k)] = panes.ViewKind(v)
 			}
+			if st.LastView != nil {
+				v := panes.ViewKind(*st.LastView)
+				// Search is a transient mode, never restore as boot view.
+				if v != panes.ViewSearch {
+					m.view = v
+				}
+			}
 		}
 	}
 	return m
@@ -783,6 +790,21 @@ func (m Model) openStructurePicker() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+
+// persistLastView writes the currently active ViewKind to state.json so
+// the next session boots into the user's last view instead of MyTasks.
+func (m *Model) persistLastView(v panes.ViewKind) {
+	if m.statePath == "" {
+		return
+	}
+	path := m.statePath
+	id := int(v)
+	go func() {
+		_ = state.Mutate(path, func(s *state.State) {
+			s.LastView = &id
+		})
+	}()
+}
 
 // persistLastSubView writes the active sub-view under top to state.json so
 // the next session restores the user's scope. Async; no-op without a state
@@ -2775,6 +2797,7 @@ func (m Model) handleViewSelected(v panes.ViewKind) (tea.Model, tea.Cmd) {
 	m.view = v
 	m.lastSubView[panes.TopGroup(v)] = v
 	m.persistLastSubView(panes.TopGroup(v), v)
+	m.persistLastView(v)
 	switch v {
 	case panes.ViewMyTasks:
 		m.list.SetStrategy(grouping.ByEpicAndPriority{})
