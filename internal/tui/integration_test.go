@@ -230,9 +230,15 @@ func (s *stubLoader) UpdateFields(context.Context, string, map[string]any) error
 	return nil
 }
 
+func (s *stubLoader) UpdateDescription(context.Context, string, string) error {
+	return nil
+}
+
 func (s *stubLoader) CreateLink(context.Context, string, string, string) error {
 	return nil
 }
+
+func (s *stubLoader) DeleteLink(context.Context, string) error { return nil }
 
 func (s *stubLoader) AddWatcher(context.Context, string, string) error    { return nil }
 func (s *stubLoader) RemoveWatcher(context.Context, string, string) error { return nil }

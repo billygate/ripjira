@@ -13,6 +13,8 @@ const (
 	ViewWatching
 	ViewReported
 	ViewRecent
+	ViewSprint
+	ViewMentions
 	ViewSearch
 )
 
@@ -28,6 +30,10 @@ func (v ViewKind) String() string {
 		return "Reported"
 	case ViewRecent:
 		return "Recent"
+	case ViewSprint:
+		return "Sprint"
+	case ViewMentions:
+		return "Mentions"
 	case ViewSearch:
 		return "Search"
 	}

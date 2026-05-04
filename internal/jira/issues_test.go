@@ -429,6 +429,47 @@ func TestRemoveWatcher(t *testing.T) {
 	}
 }
 
+func TestDeleteIssueLink(t *testing.T) {
+	var (
+		gotMethod string
+		gotPath   string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv, "a@b.com", "tok")
+	if err := c.DeleteIssueLink(context.Background(), "10001"); err != nil {
+		t.Fatalf("DeleteIssueLink: %v", err)
+	}
+	if gotMethod != http.MethodDelete || gotPath != "/rest/api/3/issueLink/10001" {
+		t.Fatalf("method/path: %s %s", gotMethod, gotPath)
+	}
+}
+
+func TestUpdateDescription_SendsADF(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv, "a@b.com", "tok")
+	if err := c.UpdateDescription(context.Background(), "PROJ-1", "Hello world"); err != nil {
+		t.Fatalf("UpdateDescription: %v", err)
+	}
+	fields, _ := gotBody["fields"].(map[string]any)
+	desc, _ := fields["description"].(map[string]any)
+	if desc["type"] != "doc" || desc["version"].(float64) != 1 {
+		t.Fatalf("description not ADF: %+v", desc)
+	}
+}
+
 func TestUpdateIssue_RejectsEmptyKeyOrFields(t *testing.T) {
 	c, err := NewClient("https://x.atlassian.net", "a@b.com", "tok")
 	if err != nil {

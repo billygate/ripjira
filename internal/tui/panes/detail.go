@@ -224,6 +224,19 @@ func (d *Detail) UpdatePriority(key string, priority jira.Priority) bool {
 	return true
 }
 
+// UpdateDescription rewrites the description body of the displayed issue
+// when it matches key, then re-renders. Used by optimistic edits via the
+// description overlay.
+func (d *Detail) UpdateDescription(key, body string) bool {
+	if d.issue == nil || d.issue.Key != key {
+		return false
+	}
+	d.issue.Description = body
+	d.description = body
+	d.refreshContent()
+	return true
+}
+
 // AppendLink adds an IssueLink to the displayed issue when its key matches
 // owningKey. Returns true on apply. Used by optimistic add-link.
 func (d *Detail) AppendLink(owningKey string, link jira.IssueLink) bool {
