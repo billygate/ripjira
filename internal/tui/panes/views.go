@@ -16,6 +16,7 @@ const (
 	ViewSprint
 	ViewMentions
 	ViewSearch
+	ViewStructures
 )
 
 // String returns a stable identifier used in tests, debug logging and
@@ -36,6 +37,8 @@ func (v ViewKind) String() string {
 		return "Mentions"
 	case ViewSearch:
 		return "Search"
+	case ViewStructures:
+		return "Structures"
 	}
 	return "?"
 }

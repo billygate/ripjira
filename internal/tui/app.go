@@ -2708,7 +2708,7 @@ func (m Model) renderTopBar() string {
 // tab; when active it appends a SEARCH cell so the user has a visual cue,
 // but it is not part of the `[`/`]` cycle.
 func (m Model) renderTabs() string {
-	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions}
+	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions, panes.ViewStructures}
 	labels := map[panes.ViewKind]string{
 		panes.ViewMyTasks:  "MY ISSUES",
 		panes.ViewWatching: "WATCHING",
@@ -2716,7 +2716,8 @@ func (m Model) renderTabs() string {
 		panes.ViewRecent:   "RECENT",
 		panes.ViewSprint:   "SPRINT",
 		panes.ViewMentions: "MENTIONS",
-		panes.ViewSearch:   "SEARCH",
+		panes.ViewSearch:     "SEARCH",
+		panes.ViewStructures: "STRUCTURES",
 	}
 	cells := make([]string, 0, len(items)+1)
 	for _, v := range items {
@@ -2923,7 +2924,7 @@ func (m Model) stepFocus(step int) (Model, tea.Cmd) {
 // only via the `/` hotkey and behaves as a transient mode rather than a
 // tab.
 func (m Model) nextView() panes.ViewKind {
-	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions}
+	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions, panes.ViewStructures}
 	for i, v := range items {
 		if v == m.view {
 			return items[(i+1)%len(items)]
@@ -2934,7 +2935,7 @@ func (m Model) nextView() panes.ViewKind {
 
 // prevView is nextView's mirror.
 func (m Model) prevView() panes.ViewKind {
-	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions}
+	items := []panes.ViewKind{panes.ViewMyTasks, panes.ViewWatching, panes.ViewReported, panes.ViewRecent, panes.ViewSprint, panes.ViewMentions, panes.ViewStructures}
 	for i, v := range items {
 		if v == m.view {
 			return items[(i-1+len(items))%len(items)]
