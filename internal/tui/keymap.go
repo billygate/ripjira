@@ -183,8 +183,8 @@ func DefaultKeymap() Keymap {
 			key.WithHelp("E", "set epic"),
 		),
 		OpenStructures: key.NewBinding(
-			key.WithKeys("S"),
-			key.WithHelp("S", "pick structure"),
+			key.WithKeys("\\"),
+			key.WithHelp("\\", "pick structure"),
 		),
 		CycleStructureNext: key.NewBinding(
 			key.WithKeys("}"),

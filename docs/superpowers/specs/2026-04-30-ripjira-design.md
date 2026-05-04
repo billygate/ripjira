@@ -159,6 +159,16 @@ then one bucket per parent, then a trailing "No epic" bucket.
 `epic_issue_types` in `config.yaml` controls which issuetype names
 count as epic-shaped (defaults to `[Epic, "Epic Feature"]`).
 
+### Structures
+
+The `STRUCTURES` tab swaps the flat grouping for **named sections** defined
+per project. Built-ins (`default`, `inbox`) ship in code; user structures
+live as YAML at `~/.config/ripjira/structures/<PROJECT>.yml` and hot-reload
+through `fsnotify`. JSON tags on `internal/structure` types match pilot's
+DTOs byte-for-byte so external sync can drop pilot's REST output as a file.
+The tab uses `\` to open the picker overlay; `}` / `{` cycles structures.
+Selection persists per-project via `state.LastStructure`.
+
 ### Темы
 
 Пакет `internal/tui/themes` определяет интерфейс `Palette` с именованными

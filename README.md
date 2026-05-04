@@ -102,6 +102,8 @@ ripjira login --reset   # delete the stored token first, then re-run
 | `S`                | create a subtask of the current issue |
 | `o`                | open current issue in your browser    |
 | `r`                | force refresh                         |
+| `\`                | pick a structure (Structures tab)     |
+| `}`, `{`           | next / previous structure             |
 | `?`                | show full help overlay                |
 | `esc`              | close overlay (or arm quit)           |
 | `q`, `ctrl+c`      | quit                                  |
@@ -112,6 +114,35 @@ any other key cancels.
 
 Hotkeys also fire on Cyrillic and Greek keyboard layouts, so you
 don't need to switch input methods to drive the UI.
+
+## Structures
+
+The `STRUCTURES` tab groups issues into named **sections** defined per project.
+Two built-ins ship in code (`default` and `inbox`); user-defined structures
+live as YAML at `~/.config/ripjira/structures/<PROJECT>.yml` and hot-reload
+on file change. Inside the tab `\` opens the picker, `}` / `{` cycle.
+
+Minimal example:
+
+```yaml
+- id: my-team
+  name: My team
+  sections:
+    - title: In progress
+      filter:
+        status: [Open, "In Progress"]
+        assignee: { exists: true }
+      group_by: [priority]
+    - title: Blocked
+      filter:
+        labels: [blocker]
+```
+
+Filter clauses accept a shorthand array (`In`) or a `{in, not, regex,
+contains, exists}` object. Across keys the predicates AND together; `any_of`
+provides OR semantics. Built-in field names: `status`, `status_category`,
+`priority`, `issuetype`, `assignee`, `reporter`, `parent_key`, `labels`,
+`project`.
 
 ## Themes
 
