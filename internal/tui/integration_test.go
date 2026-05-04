@@ -36,6 +36,14 @@ type stubLoader struct {
 	searchUsersLog []string
 	assignCh       map[string]chan error
 	assignLog      []assignCall
+
+	epics          []jira.Issue
+	setParentCalls []stubSetParentCall
+}
+
+type stubSetParentCall struct {
+	Key       string
+	ParentKey string
 }
 
 type assignCall struct {
@@ -265,9 +273,23 @@ func (s *stubLoader) CreateIssue(_ context.Context, _ jira.CreatePayload) (jira.
 	return jira.Issue{}, nil
 }
 func (s *stubLoader) SearchEpics(_ context.Context, _ string, _ []string) ([]jira.Issue, error) {
-	return nil, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]jira.Issue(nil), s.epics...), nil
 }
-func (s *stubLoader) SetParent(_ context.Context, _, _ string) error { return nil }
+
+func (s *stubLoader) SetParent(_ context.Context, key, parentKey string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.setParentCalls = append(s.setParentCalls, stubSetParentCall{Key: key, ParentKey: parentKey})
+	return nil
+}
+
+func (s *stubLoader) SetParentCalls() []stubSetParentCall {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]stubSetParentCall(nil), s.setParentCalls...)
+}
 
 // TestStage2_EndToEnd is the integration check called out by Task 17 of the
 // plan: launch the app with a stub client, verify the list renders, navigate
@@ -394,6 +416,88 @@ func TestStage2_ListFetchErrorShowsToast(t *testing.T) {
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
+}
+
+// TestEpicPicker_EndToEnd drives the epic-link picker through the full
+// teatest pipeline: open the picker, pick an epic, and verify SetParent
+// fires exactly once with the focused issue and chosen parent.
+func TestEpicPicker_EndToEnd(t *testing.T) {
+	loader := newStubLoader()
+	loader.epics = []jira.Issue{
+		{Key: "BILLING-100", Summary: "Setup deploy",
+			Type: jira.IssueType{Name: "Epic Feature"}},
+	}
+
+	palette, err := themes.ByName("tokyonight")
+	if err != nil {
+		t.Fatalf("load tokyonight: %v", err)
+	}
+	model := tui.New(palette, tui.WithLoader(loader))
+	tm := teatest.NewTestModel(t, model, teatest.WithInitialTermSize(120, 40))
+
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return bytes.Contains(b, []byte("Issues")) && bytes.Contains(b, []byte("Details"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	loader.listCh <- listResult{issues: []jira.Issue{
+		{Key: "BILLING-1", Summary: "task",
+			Type:   jira.IssueType{Name: "Task"},
+			Status: jira.Status{Name: "To Do", Category: "new"}},
+		{Key: "BILLING-100", Summary: "Setup deploy",
+			Type:   jira.IssueType{Name: "Epic Feature"},
+			Status: jira.Status{Name: "To Do", Category: "new"}},
+	}}
+
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return bytes.Contains(b, []byte("BILLING-1")) && bytes.Contains(b, []byte("BILLING-100"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Focus BILLING-1 (one ↓ from the group header).
+	tm.Send(tea.KeyMsg{Type: tea.KeyDown})
+
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return bytes.Contains(b, []byte("Loading description"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	loader.issue("BILLING-1") <- issueResult{issue: jira.Issue{
+		Key:         "BILLING-1",
+		Summary:     "task",
+		Description: "Body for BILLING-1",
+		Status:      jira.Status{Name: "To Do", Category: "new"},
+	}}
+	loader.comments("BILLING-1") <- commentsResult{}
+	loader.transitions("BILLING-1") <- transitionsResult{}
+
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return bytes.Contains(b, []byte("Body for BILLING-1"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Open the epic picker.
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
+
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		s := b
+		return bytes.Contains(s, []byte("Epic · BILLING-1")) &&
+			bytes.Contains(s, []byte("Setup deploy"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Pick BILLING-100 (the only row, cursor=0).
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return bytes.Contains(b, []byte("Epic:")) && bytes.Contains(b, []byte("BILLING-100"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
+
+	calls := loader.SetParentCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 SetParent call, got %d: %#v", len(calls), calls)
+	}
+	if calls[0].Key != "BILLING-1" || calls[0].ParentKey != "BILLING-100" {
+		t.Fatalf("recorded call = %#v", calls[0])
+	}
 }
 
 var errFetch = stubErr("network down")
