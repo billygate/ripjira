@@ -83,7 +83,7 @@ func (l *clientLoader) LoadIssues(ctx context.Context, view panes.ViewKind, quer
 		return l.c.WatchingIssues(ctx)
 	case panes.ViewReported:
 		return l.c.ReportedIssues(ctx)
-	case panes.ViewRecent, panes.ViewSprint, panes.ViewMentions:
+	case panes.ViewRecent, panes.ViewSprint, panes.ViewMentions, panes.ViewStructures:
 		// All three use a model-constructed JQL passed via the query
 		// argument. Empty query means "we couldn't construct one" (no
 		// recents yet, or the displayName isn't loaded yet) — return
