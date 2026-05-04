@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 )
 
 // KnownFields is the whitelist of field names usable in filters and group_by.
@@ -73,7 +74,7 @@ func validateSection(sec *Section) error {
 
 func validateFilter(f SectionFilter) error {
 	for field, clause := range f {
-		if !slices.Contains(KnownFields, field) {
+		if !strings.HasPrefix(field, "__") && !slices.Contains(KnownFields, field) {
 			return fmt.Errorf("unknown field %q", field)
 		}
 		if clause.IsEmpty() {
