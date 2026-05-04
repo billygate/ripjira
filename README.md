@@ -90,7 +90,8 @@ ripjira login --reset   # delete the stored token first, then re-run
 | `tab`, `shift+tab` | focus next / previous pane            |
 | `}`, `{`           | next / previous top tab               |
 | `]`, `[`           | next / previous sub-tab               |
-| `g`, `G`           | jump to top / bottom                  |
+| `home`, `G`/`end`  | jump to top / bottom of list          |
+| `g`                | open the top-tab picker overlay       |
 | `space`            | collapse / expand current group       |
 | `,`                | open Options (grouping + sort)        |
 | `/`                | filter list / open Search tab         |

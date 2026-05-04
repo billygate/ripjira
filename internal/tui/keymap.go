@@ -41,6 +41,7 @@ type Keymap struct {
 	EditDueDate        key.Binding
 	EditDescription    key.Binding
 	EditEpic           key.Binding
+	OpenTopGo      key.Binding
 	OpenStructures key.Binding
 	EditStructures key.Binding
 	NextSubView    key.Binding
@@ -92,11 +93,11 @@ func DefaultKeymap() Keymap {
 			key.WithHelp("l", "focus right"),
 		),
 		Top: key.NewBinding(
-			key.WithKeys("g"),
-			key.WithHelp("g", "top"),
+			key.WithKeys("home"),
+			key.WithHelp("home", "top"),
 		),
 		Bottom: key.NewBinding(
-			key.WithKeys("G"),
+			key.WithKeys("G", "end"),
 			key.WithHelp("G", "bottom"),
 		),
 		ToggleGroup: key.NewBinding(
@@ -183,6 +184,10 @@ func DefaultKeymap() Keymap {
 			key.WithKeys("E"),
 			key.WithHelp("E", "set epic"),
 		),
+		OpenTopGo: key.NewBinding(
+			key.WithKeys("g"),
+			key.WithHelp("g", "go to top tab"),
+		),
 		OpenStructures: key.NewBinding(
 			key.WithKeys("\\"),
 			key.WithHelp("\\", "pick structure"),
@@ -250,7 +255,7 @@ func (k Keymap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.CycleFocusForward, k.CycleFocusBackward, k.NextTab, k.PrevTab, k.FocusLeft, k.FocusRight, k.Top, k.Bottom, k.ToggleGroup, k.OpenSearch, k.OpenOptions},
 		{k.Open, k.Status, k.Assign, k.Comment, k.New, k.NewSubtask, k.Browser, k.Refresh},
-		{k.OpenStructures, k.EditStructures, k.NextSubView, k.PrevSubView},
+		{k.OpenTopGo, k.OpenStructures, k.EditStructures, k.NextSubView, k.PrevSubView},
 		{k.Help, k.CloseOverlay, k.Quit},
 	}
 }
@@ -272,6 +277,6 @@ func (k Keymap) All() []key.Binding {
 		k.ToggleGroup, k.Open,
 		k.Status, k.Assign, k.Comment, k.New, k.NewSubtask, k.Browser,
 		k.Refresh, k.OpenSearch, k.OpenOptions, k.Help, k.CloseOverlay, k.Quit,
-		k.OpenStructures, k.EditStructures, k.NextSubView, k.PrevSubView,
+		k.OpenTopGo, k.OpenStructures, k.EditStructures, k.NextSubView, k.PrevSubView,
 	}
 }

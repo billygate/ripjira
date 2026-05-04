@@ -82,6 +82,7 @@ type Model struct {
 	priority      overlays.Priority
 	epicPicker    overlays.Epic
 	structPicker  overlays.Structures
+	topGo         overlays.TopGo
 
 	list   panes.List
 	detail panes.Detail
@@ -151,7 +152,7 @@ func (m Model) canArmQuit() bool {
 		m.edit.Visible() || m.favorites.Visible() || m.link.Visible() ||
 		m.linkRemove.Visible() || m.worklog.Visible() || m.worklogRemove.Visible() ||
 		m.description.Visible() || m.priority.Visible() ||
-		m.epicPicker.Visible() || m.structPicker.Visible() {
+		m.epicPicker.Visible() || m.structPicker.Visible() || m.topGo.Visible() {
 		return false
 	}
 	if m.list.SearchEditing() || m.list.LocalFilterEditing() {
@@ -273,6 +274,7 @@ func New(p themes.Palette, opts ...Option) Model {
 		priority:    overlays.NewPriority(km.CloseOverlay),
 		epicPicker:   overlays.NewEpic(),
 		structPicker: overlays.NewStructures(km.CloseOverlay),
+		topGo:        overlays.NewTopGo(km.CloseOverlay),
 		list:       panes.New(st, grouping.ByEpicAndPriority{}, 1, 1),
 		detail:     panes.NewDetail(st, panesNoopLoader{}, 1, 1),
 		browser:    OSOpener{},
@@ -725,6 +727,18 @@ func starterStructuresYAML(pk string) string {
 		"#         labels: [blocker]\n"
 }
 
+// openTopGo pops the "Go to" overlay listing every top-level tab. The
+// active top is pre-selected; Enter switches to its persisted last sub.
+func (m Model) openTopGo() (tea.Model, tea.Cmd) {
+	tops := panes.AllTopTabs()
+	entries := make([]overlays.TopGoEntry, 0, len(tops))
+	for _, t := range tops {
+		entries = append(entries, overlays.TopGoEntry{Label: t.String(), ID: int(t)})
+	}
+	m.topGo = m.topGo.Show(entries, int(panes.TopGroup(m.view)))
+	return m, nil
+}
+
 // openStructurePicker pops the picker overlay populated with the active
 // project's built-ins + user structures. No-op when defaultProject is unset.
 func (m Model) openStructurePicker() (tea.Model, tea.Cmd) {
@@ -924,6 +938,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.feedList(m.list.Issues())
 		}
 		return m, m.watchStructuresNextCmd()
+	case overlays.TopGoSelectedMsg:
+		target := panes.TopTabKind(msg.ID)
+		v, ok := m.lastSubView[target]
+		if !ok {
+			subs := panes.SubViews(target)
+			if len(subs) > 0 {
+				v = subs[0]
+			}
+		}
+		return m.handleViewSelected(v)
 	case overlays.StructureSelectedMsg:
 		pk := m.defaultProject
 		if pk != "" {
@@ -1289,6 +1313,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.structPicker, cmd = m.structPicker.Update(msg)
 		return m, cmd
 	}
+	if m.topGo.Visible() {
+		var cmd tea.Cmd
+		m.topGo, cmd = m.topGo.Update(msg)
+		return m, cmd
+	}
 	// While the list pane's search input is being edited, the input must
 	// own the keypress — otherwise typing "n", "s", etc. would trigger
 	// global hotkeys (open create, open status…) instead of going into
@@ -1386,6 +1415,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openDescriptionOverlay()
 	case key.Matches(msg, m.keymap.EditEpic):
 		return m.openEpicPicker()
+	case key.Matches(msg, m.keymap.OpenTopGo):
+		return m.openTopGo()
 	case key.Matches(msg, m.keymap.OpenStructures):
 		return m.openStructurePicker()
 	case key.Matches(msg, m.keymap.EditStructures):
@@ -2937,6 +2968,9 @@ func (m Model) activeOverlay() string {
 		return v
 	}
 	if v := m.structPicker.View(m.styles); v != "" {
+		return v
+	}
+	if v := m.topGo.View(m.styles); v != "" {
 		return v
 	}
 	return ""
