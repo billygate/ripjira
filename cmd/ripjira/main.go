@@ -8,6 +8,9 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -71,6 +74,7 @@ func main() {
 }
 
 func run(args []string, out, errw io.Writer) int {
+	jira.Version = strings.TrimPrefix(version, "ripjira ")
 	// Only consume global flags that appear before the first non-flag argument.
 	// Otherwise `ripjira login --version` would print the version instead of
 	// being routed to the login subcommand's parser.
@@ -112,11 +116,80 @@ func run(args []string, out, errw io.Writer) int {
 		return 1
 	}
 
-	if err := runTUIFn(cfg, client, out, errw); err != nil {
+	if err := runWithRestart(cfg, client, out, errw); err != nil {
 		_, _ = fmt.Fprintf(errw, "ripjira: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+// maxRestarts caps how many times we'll relaunch the TUI after a panic
+// before giving up — prevents a tight crash loop if the panic is
+// deterministic.
+const maxRestarts = 5
+
+// runWithRestart wraps runTUIFn in a recover loop. A panic in Update/View
+// (or anywhere else on the main goroutine) is caught, logged to the crash
+// log, and the TUI is restarted from a fresh state. Setting
+// RIPJIRA_NO_RESTART=1 disables the supervisor — useful in development so
+// panics produce normal Go traces.
+func runWithRestart(cfg *config.Config, client *jira.Client, out, errw io.Writer) error {
+	if os.Getenv("RIPJIRA_NO_RESTART") == "1" {
+		return runTUIFn(cfg, client, out, errw)
+	}
+	var lastErr error
+	for attempt := 1; attempt <= maxRestarts+1; attempt++ {
+		panicked, err := runTUIOnce(cfg, client, out, errw)
+		lastErr = err
+		if !panicked {
+			return err
+		}
+		if attempt > maxRestarts {
+			return fmt.Errorf("crashed %d times in a row, giving up", attempt-1)
+		}
+		_, _ = fmt.Fprintf(errw, "ripjira: crashed; restarting (%d/%d)\n", attempt, maxRestarts)
+		time.Sleep(500 * time.Millisecond)
+	}
+	return lastErr
+}
+
+func runTUIOnce(cfg *config.Config, client *jira.Client, out, errw io.Writer) (panicked bool, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			panicked = true
+			logCrash(r, debug.Stack(), errw)
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
+	err = runTUIFn(cfg, client, out, errw)
+	return false, err
+}
+
+// logCrash appends the panic value and stack trace to the crash log under
+// $XDG_STATE_HOME/ripjira/crashes.log. Failures to open the log are silent
+// — we'd rather restart than block on disk errors. The trace also goes to
+// stderr so the user sees something even when the log is unreachable.
+func logCrash(r any, stack []byte, errw io.Writer) {
+	now := time.Now().Format(time.RFC3339)
+	header := fmt.Sprintf("\n=== %s panic: %v\n", now, r)
+	_, _ = fmt.Fprint(errw, header)
+	_, _ = errw.Write(stack)
+
+	statePath, err := state.DefaultPath()
+	if err != nil {
+		return
+	}
+	logPath := filepath.Join(filepath.Dir(statePath), "crashes.log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+		return
+	}
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer func() { _ = f.Close() }()
+	_, _ = f.WriteString(header)
+	_, _ = f.Write(stack)
 }
 
 // runLogin handles `ripjira login [--reset]`. The wizard already seeds its

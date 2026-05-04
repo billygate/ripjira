@@ -10,14 +10,30 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 )
+
+// mu serializes Load/Save for a given process so concurrent Mutate calls
+// (e.g. one tea.Cmd persisting LastProject while another persists grouping)
+// don't race or clobber each other's writes.
+var mu sync.Mutex
 
 // State is the on-disk shape. Future fields go here.
 type State struct {
-	LastProject string `json:"lastProject,omitempty"`
-	Grouping    string `json:"grouping,omitempty"`
-	Sort        string `json:"sort,omitempty"`
-	SortDesc    *bool  `json:"sortDesc,omitempty"`
+	LastProject string     `json:"lastProject,omitempty"`
+	Grouping    string     `json:"grouping,omitempty"`
+	Sort        string     `json:"sort,omitempty"`
+	SortDesc    *bool      `json:"sortDesc,omitempty"`
+	Favorites      []Favorite        `json:"favorites,omitempty"`
+	RecentlyViewed []string          `json:"recentlyViewed,omitempty"`
+	CommentDrafts  map[string]string `json:"commentDrafts,omitempty"`
+}
+
+// Favorite is a named JQL query the user has saved for re-use. Names are
+// shown in the favorites picker; JQL is sent to Jira verbatim.
+type Favorite struct {
+	Name string `json:"name"`
+	JQL  string `json:"jql"`
 }
 
 // DefaultPath returns the XDG-aware default location of the state file.
@@ -35,6 +51,33 @@ func DefaultPath() (string, error) {
 // Load reads and returns the State at path. A missing file returns a
 // zero-value State and a nil error (first run is not an error).
 func Load(path string) (State, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	return loadLocked(path)
+}
+
+// Save writes s to path with mode 0600. Parent directories are created
+// as needed. Writes are atomic (temp file + rename).
+func Save(path string, s State) error {
+	mu.Lock()
+	defer mu.Unlock()
+	return saveLocked(path, s)
+}
+
+// Mutate loads the state at path, applies fn, and writes it back atomically
+// under a process-wide lock. Safe to call from a tea.Cmd goroutine.
+func Mutate(path string, fn func(*State)) error {
+	mu.Lock()
+	defer mu.Unlock()
+	s, err := loadLocked(path)
+	if err != nil {
+		return err
+	}
+	fn(&s)
+	return saveLocked(path, s)
+}
+
+func loadLocked(path string) (State, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // path is configured by the app
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -49,9 +92,7 @@ func Load(path string) (State, error) {
 	return s, nil
 }
 
-// Save writes s to path with mode 0600. Parent directories are created
-// as needed. Writes are atomic (temp file + rename).
-func Save(path string, s State) error {
+func saveLocked(path string, s State) error {
 	data, err := json.Marshal(&s)
 	if err != nil {
 		return fmt.Errorf("state: encode: %w", err)

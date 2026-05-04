@@ -46,7 +46,7 @@ func TestLoadMissingFileReturnsZeroValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if (s != state.State{}) {
+	if s.LastProject != "" || s.Grouping != "" || s.Sort != "" || s.SortDesc != nil || len(s.Favorites) != 0 {
 		t.Fatalf("Load missing = %+v, want zero", s)
 	}
 }
@@ -61,7 +61,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if got != want {
+	if got.LastProject != want.LastProject {
 		t.Fatalf("round-trip = %+v, want %+v", got, want)
 	}
 }

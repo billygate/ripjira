@@ -48,7 +48,18 @@ func (l *countingLoader) SearchUsers(context.Context, string) ([]jira.User, erro
 	return nil, nil
 }
 func (l *countingLoader) AssignIssue(context.Context, string, string) error { return nil }
-func (l *countingLoader) GetMyself(context.Context) (jira.User, error)      { return jira.User{}, nil }
+func (l *countingLoader) UpdateFields(context.Context, string, map[string]any) error {
+	return nil
+}
+func (l *countingLoader) CreateLink(context.Context, string, string, string) error {
+	return nil
+}
+func (l *countingLoader) AddWatcher(context.Context, string, string) error    { return nil }
+func (l *countingLoader) RemoveWatcher(context.Context, string, string) error { return nil }
+func (l *countingLoader) AddWorklog(context.Context, string, string, string) error {
+	return nil
+}
+func (l *countingLoader) GetMyself(context.Context) (jira.User, error) { return jira.User{}, nil }
 func (l *countingLoader) Projects(context.Context) ([]jira.Project, error)  { return nil, nil }
 func (l *countingLoader) IssueTypesForProject(context.Context, string) ([]jira.IssueType, error) {
 	return nil, nil

@@ -395,7 +395,7 @@ func stripANSI(s string) string {
 func TestView_TabBarRendersAtWideWidth(t *testing.T) {
 	m := newTestAppModel(t, 120, 30)
 	out := stripANSI(m.View())
-	for _, want := range []string{"MY ISSUES", "WATCHING"} {
+	for _, want := range []string{"MY ISSUES", "WATCHING", "REPORTED"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("tab bar missing %q:\n%s", want, out)
 		}
@@ -440,6 +440,11 @@ func (l *recordingLoader) DoTransition(context.Context, string, string) error   
 func (l *recordingLoader) AddComment(context.Context, string, string) error         { return nil }
 func (l *recordingLoader) SearchUsers(context.Context, string) ([]jira.User, error) { return nil, nil }
 func (l *recordingLoader) AssignIssue(context.Context, string, string) error        { return nil }
+func (l *recordingLoader) UpdateFields(context.Context, string, map[string]any) error { return nil }
+func (l *recordingLoader) CreateLink(context.Context, string, string, string) error { return nil }
+func (l *recordingLoader) AddWatcher(context.Context, string, string) error          { return nil }
+func (l *recordingLoader) RemoveWatcher(context.Context, string, string) error       { return nil }
+func (l *recordingLoader) AddWorklog(context.Context, string, string, string) error  { return nil }
 func (l *recordingLoader) GetMyself(context.Context) (jira.User, error)             { return jira.User{}, nil }
 func (l *recordingLoader) Projects(context.Context) ([]jira.Project, error)         { return nil, nil }
 func (l *recordingLoader) IssueTypesForProject(context.Context, string) ([]jira.IssueType, error) {
@@ -870,7 +875,7 @@ func TestTabBar_RendersTwoLabels(t *testing.T) {
 	m := newTestModel(t)
 	m, _ = sendSize(m, 80, 24)
 	out := stripANSI(m.View())
-	for _, want := range []string{"MY ISSUES", "WATCHING"} {
+	for _, want := range []string{"MY ISSUES", "WATCHING", "REPORTED"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("tab bar missing %q\nfull output:\n%s", want, out)
 		}
@@ -895,8 +900,18 @@ func TestTabBar_NextTabCyclesForward(t *testing.T) {
 	}
 	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
 	m = mi.(Model)
+	if m.view != panes.ViewReported {
+		t.Errorf("after ]] view = %v, want ViewReported", m.view)
+	}
+	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	m = mi.(Model)
+	if m.view != panes.ViewRecent {
+		t.Errorf("after ]]] view = %v, want ViewRecent", m.view)
+	}
+	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{']'}})
+	m = mi.(Model)
 	if m.view != panes.ViewMyTasks {
-		t.Errorf("wrap: after ]] view = %v, want ViewMyTasks", m.view)
+		t.Errorf("wrap: after ]]]] view = %v, want ViewMyTasks", m.view)
 	}
 }
 
@@ -905,8 +920,13 @@ func TestTabBar_PrevTabCyclesBackward(t *testing.T) {
 	m, _ = sendSize(m, 80, 24)
 	mi, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
 	m = mi.(Model)
-	if m.view != panes.ViewWatching {
-		t.Errorf("after [ view = %v, want ViewWatching", m.view)
+	if m.view != panes.ViewRecent {
+		t.Errorf("after [ view = %v, want ViewRecent", m.view)
+	}
+	mi, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'['}})
+	m = mi.(Model)
+	if m.view != panes.ViewReported {
+		t.Errorf("after [[ view = %v, want ViewReported", m.view)
 	}
 }
 
@@ -1076,16 +1096,18 @@ func TestApp_OptionsAppliedPersistsToState(t *testing.T) {
 	}
 	_, _ = m.Update(msg)
 
-	st, err := state.Load(statePath)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	// Save runs in a goroutine; poll briefly.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		st, err := state.Load(statePath)
+		if err == nil && st.Grouping == "priority" && st.Sort == "updated" &&
+			st.SortDesc != nil && *st.SortDesc {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	if st.Grouping != "priority" || st.Sort != "updated" {
-		t.Fatalf("state: grouping=%q sort=%q", st.Grouping, st.Sort)
-	}
-	if st.SortDesc == nil || *st.SortDesc != true {
-		t.Fatalf("state: SortDesc = %v", st.SortDesc)
-	}
+	st, _ := state.Load(statePath)
+	t.Fatalf("state not persisted: grouping=%q sort=%q desc=%v", st.Grouping, st.Sort, st.SortDesc)
 }
 
 func TestLayout_NotTranslatedWhenOverlayOpen(t *testing.T) {

@@ -41,6 +41,20 @@ type SubtaskRef struct {
 	Status  Status
 }
 
+// IssueLink is a directional relationship between two issues. Relation is
+// the direction-specific phrase as it reads from the perspective of the
+// owning issue ("blocks", "is blocked by", "relates to", …). OtherKey is
+// the issue on the other end of the link.
+type IssueLink struct {
+	ID       string
+	Relation string // direction-specific phrase, e.g. "blocks" or "is blocked by"
+	TypeName string // canonical type name, e.g. "Blocks"
+	OtherKey string
+	Summary  string
+	Status   Status
+	Outward  bool // true when the owning issue points TO OtherKey
+}
+
 // Comment is a single comment on an issue.
 type Comment struct {
 	ID      string
@@ -127,8 +141,11 @@ type Issue struct {
 	Type        IssueType
 	Assignee    *User
 	Reporter    *User
+	Labels      []string
+	DueDate     string // YYYY-MM-DD; empty when not set
 	Description string // markdown converted from renderedFields HTML
 	Comments    []Comment
+	Links       []IssueLink
 	Subtasks    []SubtaskRef
 	Attachments []Attachment
 	Created     time.Time

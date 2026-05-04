@@ -19,6 +19,11 @@ const myIssuesJQL = "assignee = currentUser() AND resolution = Unresolved ORDER 
 // watchingJQL is the fixed JQL used by WatchingIssues per the design spec.
 const watchingJQL = "watcher = currentUser() AND resolution = Unresolved ORDER BY updated DESC"
 
+// reportedJQL backs ReportedIssues — issues the current user filed (is the
+// reporter of) and which are still open. Useful for tracking work you've
+// asked someone else to do.
+const reportedJQL = "reporter = currentUser() AND resolution = Unresolved ORDER BY updated DESC"
+
 // userDTO is the wire form of a Jira user.
 type userDTO struct {
 	AccountID    string `json:"accountId"`
@@ -103,6 +108,8 @@ type issueFieldsDTO struct {
 	IssueType *issueTypeDTO `json:"issuetype"`
 	Assignee  *userDTO      `json:"assignee"`
 	Reporter  *userDTO      `json:"reporter"`
+	Labels    []string      `json:"labels"`
+	DueDate   string        `json:"duedate"`
 	Created   string        `json:"created"`
 	Updated   string        `json:"updated"`
 	Comment   *struct {
@@ -110,6 +117,30 @@ type issueFieldsDTO struct {
 	} `json:"comment"`
 	Subtasks   []subtaskRefDTO `json:"subtasks"`
 	Attachment []attachmentDTO `json:"attachment"`
+	IssueLinks []issueLinkDTO  `json:"issuelinks"`
+}
+
+// issueLinkDTO is the wire form of a Jira issue link. Exactly one of
+// inwardIssue / outwardIssue is set per record; the type carries the
+// direction-specific phrasing.
+type issueLinkDTO struct {
+	ID   string `json:"id"`
+	Type struct {
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Inward  string `json:"inward"`
+		Outward string `json:"outward"`
+	} `json:"type"`
+	InwardIssue  *linkedIssueDTO `json:"inwardIssue"`
+	OutwardIssue *linkedIssueDTO `json:"outwardIssue"`
+}
+
+type linkedIssueDTO struct {
+	Key    string `json:"key"`
+	Fields struct {
+		Summary string     `json:"summary"`
+		Status  *statusDTO `json:"status"`
+	} `json:"fields"`
 }
 
 type attachmentDTO struct {
@@ -173,6 +204,8 @@ func (c *Client) dtoToIssue(d issueDTO) Issue {
 		Type:     d.Fields.IssueType.toDomain(),
 		Assignee: d.Fields.Assignee.toDomain(),
 		Reporter: d.Fields.Reporter.toDomain(),
+		Labels:   append([]string(nil), d.Fields.Labels...),
+		DueDate:  d.Fields.DueDate,
 		Created:  created,
 		Updated:  updated,
 		URL:      c.browseURL(d.Key),
@@ -190,6 +223,38 @@ func (c *Client) dtoToIssue(d issueDTO) Issue {
 			})
 		}
 		is.Subtasks = subs
+	}
+	if len(d.Fields.IssueLinks) > 0 {
+		links := make([]IssueLink, 0, len(d.Fields.IssueLinks))
+		for _, l := range d.Fields.IssueLinks {
+			var (
+				other    *linkedIssueDTO
+				outward  bool
+				relation string
+			)
+			switch {
+			case l.OutwardIssue != nil && l.OutwardIssue.Key != "":
+				other = l.OutwardIssue
+				outward = true
+				relation = l.Type.Outward
+			case l.InwardIssue != nil && l.InwardIssue.Key != "":
+				other = l.InwardIssue
+				outward = false
+				relation = l.Type.Inward
+			default:
+				continue
+			}
+			links = append(links, IssueLink{
+				ID:       l.ID,
+				Relation: relation,
+				TypeName: l.Type.Name,
+				OtherKey: other.Key,
+				Summary:  other.Fields.Summary,
+				Status:   other.Fields.Status.toDomain(),
+				Outward:  outward,
+			})
+		}
+		is.Links = links
 	}
 	if len(d.Fields.Attachment) > 0 {
 		atts := make([]Attachment, 0, len(d.Fields.Attachment))
@@ -300,6 +365,106 @@ func (c *Client) WatchingIssues(ctx context.Context) ([]Issue, error) {
 	return c.Search(ctx, watchingJQL)
 }
 
+// ReportedIssues returns the open issues the current user reported (filed),
+// ordered by most recently updated.
+func (c *Client) ReportedIssues(ctx context.Context) ([]Issue, error) {
+	return c.Search(ctx, reportedJQL)
+}
+
+// UpdateIssue patches the named fields on key via PUT /issue/{key}. The
+// fields map keys must match Jira's REST v3 field IDs (e.g. "summary",
+// "labels", "duedate", "priority"); values must already be in the wire
+// shape Jira expects (e.g. priority is {"name":"High"}, not "High"). A 204
+// is the happy path.
+func (c *Client) UpdateIssue(ctx context.Context, key string, fields map[string]any) error {
+	if key == "" {
+		return errors.New("jira: issue key is required")
+	}
+	if len(fields) == 0 {
+		return errors.New("jira: no fields to update")
+	}
+	body := map[string]any{"fields": fields}
+	path := "/rest/api/3/issue/" + url.PathEscape(key)
+	return c.do(ctx, http.MethodPut, path, body, nil)
+}
+
+// AddWorklog logs work against issue. timeSpent uses Jira's compact
+// format ("1h 30m", "2d", "45m") and is validated server-side. comment is
+// optional; when non-empty it is sent as an ADF paragraph.
+func (c *Client) AddWorklog(ctx context.Context, key, timeSpent, comment string) error {
+	if key == "" {
+		return errors.New("jira: issue key is required")
+	}
+	if strings.TrimSpace(timeSpent) == "" {
+		return errors.New("jira: timeSpent is required")
+	}
+	body := map[string]any{"timeSpent": timeSpent}
+	if strings.TrimSpace(comment) != "" {
+		body["comment"] = map[string]any{
+			"type":    "doc",
+			"version": 1,
+			"content": []any{
+				map[string]any{
+					"type": "paragraph",
+					"content": []any{
+						map[string]any{"type": "text", "text": comment},
+					},
+				},
+			},
+		}
+	}
+	path := "/rest/api/3/issue/" + url.PathEscape(key) + "/worklog"
+	return c.do(ctx, http.MethodPost, path, body, nil)
+}
+
+// AddWatcher subscribes the given account to issue change notifications.
+// Empty accountID means "the authenticated user" — Jira interprets a body
+// of `null` as self.
+func (c *Client) AddWatcher(ctx context.Context, key, accountID string) error {
+	if key == "" {
+		return errors.New("jira: issue key is required")
+	}
+	path := "/rest/api/3/issue/" + url.PathEscape(key) + "/watchers"
+	var body any
+	if accountID != "" {
+		body = accountID
+	}
+	return c.do(ctx, http.MethodPost, path, body, nil)
+}
+
+// RemoveWatcher unsubscribes the given account. accountID is required —
+// Jira does not allow self-unwatch via empty argument on this endpoint.
+func (c *Client) RemoveWatcher(ctx context.Context, key, accountID string) error {
+	if key == "" || accountID == "" {
+		return errors.New("jira: issue key and accountId are required")
+	}
+	q := url.Values{}
+	q.Set("accountId", accountID)
+	path := "/rest/api/3/issue/" + url.PathEscape(key) + "/watchers?" + q.Encode()
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
+// CreateIssueLink links two issues with the given relationship type. The
+// API is direction-aware: outwardIssue is the issue the relationship
+// "points to". For example, to mark PROJ-1 as blocking PROJ-2 you call
+// CreateIssueLink(ctx, "Blocks", "PROJ-1", "PROJ-2"). typeName must match
+// one of the link types configured on the Jira instance — invalid names
+// are rejected with a 400.
+func (c *Client) CreateIssueLink(ctx context.Context, typeName, inwardKey, outwardKey string) error {
+	if typeName == "" {
+		return errors.New("jira: link type is required")
+	}
+	if inwardKey == "" || outwardKey == "" {
+		return errors.New("jira: both keys are required")
+	}
+	body := map[string]any{
+		"type":         map[string]any{"name": typeName},
+		"inwardIssue":  map[string]any{"key": inwardKey},
+		"outwardIssue": map[string]any{"key": outwardKey},
+	}
+	return c.do(ctx, http.MethodPost, "/rest/api/3/issueLink", body, nil)
+}
+
 // GetIssue returns the full issue including rendered description and
 // comments.
 func (c *Client) GetIssue(ctx context.Context, key string) (Issue, error) {
@@ -400,6 +565,7 @@ func (c *Client) DownloadAttachment(ctx context.Context, contentURL string, maxB
 	}
 	req.Header.Set("Authorization", c.authHeader)
 	req.Header.Set("Accept", "*/*")
+	req.Header.Set("User-Agent", UserAgent())
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, "", err

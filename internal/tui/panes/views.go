@@ -11,6 +11,8 @@ type ViewKind int
 const (
 	ViewMyTasks ViewKind = iota
 	ViewWatching
+	ViewReported
+	ViewRecent
 	ViewSearch
 )
 
@@ -22,6 +24,10 @@ func (v ViewKind) String() string {
 		return "My Tasks"
 	case ViewWatching:
 		return "Watching"
+	case ViewReported:
+		return "Reported"
+	case ViewRecent:
+		return "Recent"
 	case ViewSearch:
 		return "Search"
 	}

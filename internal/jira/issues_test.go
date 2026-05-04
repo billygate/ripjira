@@ -264,6 +264,184 @@ func TestDoTransition(t *testing.T) {
 	}
 }
 
+func TestUpdateIssue(t *testing.T) {
+	var (
+		gotMethod string
+		gotPath   string
+		gotBody   map[string]any
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv, "a@b.com", "tok")
+	err := c.UpdateIssue(context.Background(), "PROJ-1", map[string]any{
+		"summary":  "New title",
+		"priority": map[string]any{"name": "High"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateIssue: %v", err)
+	}
+	if gotMethod != http.MethodPut {
+		t.Fatalf("method: %q", gotMethod)
+	}
+	if gotPath != "/rest/api/3/issue/PROJ-1" {
+		t.Fatalf("path: %q", gotPath)
+	}
+	fields, ok := gotBody["fields"].(map[string]any)
+	if !ok {
+		t.Fatalf("body missing fields object: %+v", gotBody)
+	}
+	if fields["summary"] != "New title" {
+		t.Fatalf("summary: %v", fields["summary"])
+	}
+	pr, ok := fields["priority"].(map[string]any)
+	if !ok || pr["name"] != "High" {
+		t.Fatalf("priority: %v", fields["priority"])
+	}
+}
+
+func TestCreateIssueLink(t *testing.T) {
+	var (
+		gotMethod string
+		gotPath   string
+		gotBody   map[string]any
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv, "a@b.com", "tok")
+	if err := c.CreateIssueLink(context.Background(), "Blocks", "PROJ-1", "PROJ-2"); err != nil {
+		t.Fatalf("CreateIssueLink: %v", err)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/rest/api/3/issueLink" {
+		t.Fatalf("method/path: %s %s", gotMethod, gotPath)
+	}
+	typ, ok := gotBody["type"].(map[string]any)
+	if !ok || typ["name"] != "Blocks" {
+		t.Fatalf("type: %v", gotBody["type"])
+	}
+	in, ok := gotBody["inwardIssue"].(map[string]any)
+	if !ok || in["key"] != "PROJ-1" {
+		t.Fatalf("inwardIssue: %v", gotBody["inwardIssue"])
+	}
+	out, ok := gotBody["outwardIssue"].(map[string]any)
+	if !ok || out["key"] != "PROJ-2" {
+		t.Fatalf("outwardIssue: %v", gotBody["outwardIssue"])
+	}
+}
+
+func TestAddWorklog(t *testing.T) {
+	var (
+		gotMethod string
+		gotPath   string
+		gotBody   map[string]any
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv, "a@b.com", "tok")
+	if err := c.AddWorklog(context.Background(), "PROJ-7", "1h 30m", "fixed it"); err != nil {
+		t.Fatalf("AddWorklog: %v", err)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/rest/api/3/issue/PROJ-7/worklog" {
+		t.Fatalf("method/path: %s %s", gotMethod, gotPath)
+	}
+	if gotBody["timeSpent"] != "1h 30m" {
+		t.Fatalf("timeSpent: %v", gotBody["timeSpent"])
+	}
+	if _, hasComment := gotBody["comment"]; !hasComment {
+		t.Fatalf("comment ADF not in body: %+v", gotBody)
+	}
+}
+
+func TestAddWatcher_NoBodyMeansSelf(t *testing.T) {
+	var (
+		gotMethod string
+		gotPath   string
+		gotBody   string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		b, _ := io.ReadAll(r.Body)
+		gotBody = strings.TrimSpace(string(b))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv, "a@b.com", "tok")
+	if err := c.AddWatcher(context.Background(), "PROJ-7", ""); err != nil {
+		t.Fatalf("AddWatcher: %v", err)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/rest/api/3/issue/PROJ-7/watchers" {
+		t.Fatalf("method/path: %s %s", gotMethod, gotPath)
+	}
+	// Empty accountID → no body (Jira's "self" semantics).
+	if gotBody != "" {
+		t.Fatalf("body for self-watch should be empty, got %q", gotBody)
+	}
+}
+
+func TestRemoveWatcher(t *testing.T) {
+	var (
+		gotMethod string
+		gotPath   string
+		gotQuery  string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv, "a@b.com", "tok")
+	if err := c.RemoveWatcher(context.Background(), "PROJ-7", "abc-123"); err != nil {
+		t.Fatalf("RemoveWatcher: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Fatalf("method: %s", gotMethod)
+	}
+	if gotPath != "/rest/api/3/issue/PROJ-7/watchers" {
+		t.Fatalf("path: %s", gotPath)
+	}
+	if !strings.Contains(gotQuery, "accountId=abc-123") {
+		t.Fatalf("query: %s", gotQuery)
+	}
+}
+
+func TestUpdateIssue_RejectsEmptyKeyOrFields(t *testing.T) {
+	c, err := NewClient("https://x.atlassian.net", "a@b.com", "tok")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if err := c.UpdateIssue(context.Background(), "", map[string]any{"summary": "x"}); err == nil {
+		t.Fatal("empty key should error")
+	}
+	if err := c.UpdateIssue(context.Background(), "PROJ-1", nil); err == nil {
+		t.Fatal("nil fields should error")
+	}
+}
+
 func TestAssignIssue(t *testing.T) {
 	var (
 		gotMethod string

@@ -202,6 +202,77 @@ func (d *Detail) UpdateStatus(key string, status jira.Status) bool {
 	return true
 }
 
+// UpdateSummary rewrites the summary of the displayed issue when it
+// matches key, then re-renders. Used by optimistic edits.
+func (d *Detail) UpdateSummary(key, summary string) bool {
+	if d.issue == nil || d.issue.Key != key {
+		return false
+	}
+	d.issue.Summary = summary
+	d.refreshContent()
+	return true
+}
+
+// UpdatePriority rewrites the priority of the displayed issue when it
+// matches key, then re-renders. Used by optimistic edits.
+func (d *Detail) UpdatePriority(key string, priority jira.Priority) bool {
+	if d.issue == nil || d.issue.Key != key {
+		return false
+	}
+	d.issue.Priority = priority
+	d.refreshContent()
+	return true
+}
+
+// AppendLink adds an IssueLink to the displayed issue when its key matches
+// owningKey. Returns true on apply. Used by optimistic add-link.
+func (d *Detail) AppendLink(owningKey string, link jira.IssueLink) bool {
+	if d.issue == nil || d.issue.Key != owningKey {
+		return false
+	}
+	d.issue.Links = append(d.issue.Links, link)
+	d.refreshContent()
+	return true
+}
+
+// RemoveLink drops the first link to otherKey from the displayed issue
+// when its key matches owningKey. Used to revert a failed optimistic add.
+func (d *Detail) RemoveLink(owningKey, otherKey string) bool {
+	if d.issue == nil || d.issue.Key != owningKey {
+		return false
+	}
+	for i, l := range d.issue.Links {
+		if l.OtherKey == otherKey {
+			d.issue.Links = append(d.issue.Links[:i], d.issue.Links[i+1:]...)
+			d.refreshContent()
+			return true
+		}
+	}
+	return false
+}
+
+// UpdateLabels rewrites the labels of the displayed issue when it matches
+// key, then re-renders. Used by optimistic edits.
+func (d *Detail) UpdateLabels(key string, labels []string) bool {
+	if d.issue == nil || d.issue.Key != key {
+		return false
+	}
+	d.issue.Labels = append([]string(nil), labels...)
+	d.refreshContent()
+	return true
+}
+
+// UpdateDueDate rewrites the due date of the displayed issue when it
+// matches key, then re-renders. Used by optimistic edits.
+func (d *Detail) UpdateDueDate(key, dueDate string) bool {
+	if d.issue == nil || d.issue.Key != key {
+		return false
+	}
+	d.issue.DueDate = dueDate
+	d.refreshContent()
+	return true
+}
+
 // AppendSubtask adds a SubtaskRef to the displayed issue when its key
 // matches parentKey. Returns true on apply. Used by optimistic updates
 // from the create wizard's subtask-mode submit path.
@@ -569,6 +640,12 @@ func (d *Detail) refreshContent() {
 	} else {
 		b.WriteString("Assignee:  unassigned\n")
 	}
+	if len(d.issue.Labels) > 0 {
+		fmt.Fprintf(&b, "Labels:    %s\n", strings.Join(d.issue.Labels, ", "))
+	}
+	if d.issue.DueDate != "" {
+		fmt.Fprintf(&b, "Due:       %s\n", d.issue.DueDate)
+	}
 
 	b.WriteString("\n")
 	b.WriteString(d.styles.SectionHeader.Render("── Description ──"))
@@ -601,6 +678,25 @@ func (d *Detail) refreshContent() {
 				s.Key,
 				truncate(s.Status.Name, 12),
 				truncate(s.Summary, 60))
+		}
+	}
+
+	b.WriteString("\n\n")
+	b.WriteString(d.styles.SectionHeader.Render(
+		fmt.Sprintf("── Links (%d) ──", len(d.issue.Links))))
+	b.WriteString("\n")
+	if len(d.issue.Links) == 0 {
+		b.WriteString(d.styles.Muted.Render("(no links — press + to add one)"))
+	} else {
+		for i, l := range d.issue.Links {
+			if i > 0 {
+				b.WriteString("\n")
+			}
+			fmt.Fprintf(&b, "%s %-12s  %-12s  %s",
+				d.styles.Muted.Render(truncate(l.Relation, 16)),
+				l.OtherKey,
+				truncate(l.Status.Name, 12),
+				truncate(l.Summary, 60))
 		}
 	}
 
