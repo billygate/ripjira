@@ -20,11 +20,12 @@ type DescriptionSubmittedMsg struct {
 }
 
 // Description is the `M` overlay: a multi-line textarea pre-filled with
-// the current description (markdown form). On submit the body is sent as
-// plain-text ADF — markdown structure (headings, lists, code blocks) will
-// not be preserved on the server side, since ripjira does not yet
-// implement a markdown→ADF round-trip. The overlay shows a warning so
-// the user can opt out via Esc instead of clobbering formatting.
+// the current description (markdown form). On submit the body is parsed
+// by the jira package's markdown→ADF converter, which handles
+// paragraphs, headings, lists, code blocks, and the common inline marks
+// (strong, em, code, link). Constructs outside that subset round-trip
+// as literal text — perfect fidelity is not the goal; preserving the
+// shapes users actually use is.
 type Description struct {
 	visible      bool
 	issueKey     string
@@ -35,7 +36,7 @@ type Description struct {
 // NewDescription builds a hidden overlay.
 func NewDescription(closeKey key.Binding) Description {
 	ta := textarea.New()
-	ta.Placeholder = "Plain text only — markdown will not round-trip"
+	ta.Placeholder = "Markdown — headings, lists, code blocks, *em*, **bold**, [link](url)"
 	ta.ShowLineNumbers = false
 	ta.Prompt = ""
 	ta.SetWidth(70)
@@ -99,10 +100,10 @@ func (d Description) View(s styles.Styles) string {
 		return ""
 	}
 	title := s.OverlayTitle.Render("Edit description · " + d.issueKey)
-	warn := s.Error.Render("⚠ Plain text only — existing markdown structure will be flattened to paragraphs on submit.")
 	hint := s.Muted.Render(
-		"ctrl+s submit    " + d.closeBinding.Help().Key + " " + d.closeBinding.Help().Desc,
+		"ctrl+s submit    " + d.closeBinding.Help().Key + " " + d.closeBinding.Help().Desc +
+			"    markdown: # head, - list, ``` code, **bold**, *em*, [link](url)",
 	)
-	parts := []string{title, "", warn, "", d.textarea.View(), "", hint}
+	parts := []string{title, "", d.textarea.View(), "", hint}
 	return s.OverlayBorder.Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
 }

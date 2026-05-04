@@ -55,6 +55,7 @@ func (s *stubJiraClient) RemoveWatcher(context.Context, string, string) error { 
 func (s *stubJiraClient) AddWorklog(context.Context, string, string, string) error {
 	return nil
 }
+func (s *stubJiraClient) DeleteWorklog(context.Context, string, string) error { return nil }
 func (s *stubJiraClient) Myself(context.Context) (jira.User, error)                { return jira.User{}, nil }
 func (s *stubJiraClient) Projects(context.Context) ([]jira.Project, error)         { return nil, nil }
 func (s *stubJiraClient) IssueTypesForProject(context.Context, string) ([]jira.IssueType, error) {

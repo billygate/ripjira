@@ -237,6 +237,34 @@ func (d *Detail) UpdateDescription(key, body string) bool {
 	return true
 }
 
+// RemoveWorklogByID drops the worklog with the given ID from the
+// displayed issue. Used by optimistic delete-worklog.
+func (d *Detail) RemoveWorklogByID(owningKey, worklogID string) bool {
+	if d.issue == nil || d.issue.Key != owningKey {
+		return false
+	}
+	for i, w := range d.issue.Worklogs {
+		if w.ID == worklogID {
+			d.issue.Worklogs = append(d.issue.Worklogs[:i], d.issue.Worklogs[i+1:]...)
+			d.refreshContent()
+			return true
+		}
+	}
+	return false
+}
+
+// AppendWorklog adds a Worklog to the displayed issue. Used so the
+// add-worklog flow can show the freshly-logged entry without waiting on
+// a refetch.
+func (d *Detail) AppendWorklog(owningKey string, w jira.Worklog) bool {
+	if d.issue == nil || d.issue.Key != owningKey {
+		return false
+	}
+	d.issue.Worklogs = append(d.issue.Worklogs, w)
+	d.refreshContent()
+	return true
+}
+
 // AppendLink adds an IssueLink to the displayed issue when its key matches
 // owningKey. Returns true on apply. Used by optimistic add-link.
 func (d *Detail) AppendLink(owningKey string, link jira.IssueLink) bool {
@@ -691,6 +719,32 @@ func (d *Detail) refreshContent() {
 				s.Key,
 				truncate(s.Status.Name, 12),
 				truncate(s.Summary, 60))
+		}
+	}
+
+	b.WriteString("\n\n")
+	b.WriteString(d.styles.SectionHeader.Render(
+		fmt.Sprintf("── Worklogs (%d) ──", len(d.issue.Worklogs))))
+	b.WriteString("\n")
+	if len(d.issue.Worklogs) == 0 {
+		b.WriteString(d.styles.Muted.Render("(no worklogs — press t to log time)"))
+	} else {
+		for i, w := range d.issue.Worklogs {
+			if i > 0 {
+				b.WriteString("\n")
+			}
+			author := "unknown"
+			if w.Author != nil {
+				author = w.Author.DisplayName
+			}
+			when := ""
+			if !w.Started.IsZero() {
+				when = w.Started.Format("2006-01-02")
+			}
+			fmt.Fprintf(&b, "%-10s  %-12s  %s",
+				truncate(w.TimeSpent, 10),
+				truncate(when, 12),
+				truncate(author, 40))
 		}
 	}
 

@@ -118,6 +118,19 @@ type issueFieldsDTO struct {
 	Subtasks   []subtaskRefDTO `json:"subtasks"`
 	Attachment []attachmentDTO `json:"attachment"`
 	IssueLinks []issueLinkDTO  `json:"issuelinks"`
+	Worklog    *struct {
+		Worklogs []worklogDTO `json:"worklogs"`
+	} `json:"worklog"`
+}
+
+// worklogDTO is the wire form of a single worklog entry returned inline
+// with the issue when "*all" fields are requested.
+type worklogDTO struct {
+	ID           string   `json:"id"`
+	Author       *userDTO `json:"author"`
+	TimeSpent    string   `json:"timeSpent"`
+	Started      string   `json:"started"`
+	TimeSpentSec int64    `json:"timeSpentSeconds"`
 }
 
 // issueLinkDTO is the wire form of a Jira issue link. Exactly one of
@@ -223,6 +236,20 @@ func (c *Client) dtoToIssue(d issueDTO) Issue {
 			})
 		}
 		is.Subtasks = subs
+	}
+	if d.Fields.Worklog != nil && len(d.Fields.Worklog.Worklogs) > 0 {
+		ws := make([]Worklog, 0, len(d.Fields.Worklog.Worklogs))
+		for _, w := range d.Fields.Worklog.Worklogs {
+			started, _ := parseJiraTime(w.Started)
+			ws = append(ws, Worklog{
+				ID:        w.ID,
+				Author:    w.Author.toDomain(),
+				TimeSpent: w.TimeSpent,
+				Seconds:   w.TimeSpentSec,
+				Started:   started,
+			})
+		}
+		is.Worklogs = ws
 	}
 	if len(d.Fields.IssueLinks) > 0 {
 		links := make([]IssueLink, 0, len(d.Fields.IssueLinks))
@@ -389,16 +416,16 @@ func (c *Client) UpdateIssue(ctx context.Context, key string, fields map[string]
 }
 
 // UpdateDescription replaces the issue's description with the given
-// plain-text body, encoded as a minimal ADF document. Markdown structure
-// in the input is preserved as literal text — ripjira does not yet
-// implement a markdown→ADF round-trip, so users editing a richly
-// formatted description should expect their lists/headings/code-blocks
-// to flatten to paragraphs.
+// markdown body. The text is parsed by the in-package markdownToADF
+// converter, which handles paragraphs, ATX headings, fenced code blocks,
+// bullet/ordered lists, and the inline marks **strong**, *em*, `code`,
+// [text](url). Constructs outside that subset fall through as literal
+// text so submission never fails — round-trip fidelity is best-effort.
 func (c *Client) UpdateDescription(ctx context.Context, key, body string) error {
 	if key == "" {
 		return errors.New("jira: issue key is required")
 	}
-	doc := textToADF(body)
+	doc := markdownToADF(body)
 	return c.UpdateIssue(ctx, key, map[string]any{"description": doc})
 }
 
@@ -429,6 +456,17 @@ func (c *Client) AddWorklog(ctx context.Context, key, timeSpent, comment string)
 	}
 	path := "/rest/api/3/issue/" + url.PathEscape(key) + "/worklog"
 	return c.do(ctx, http.MethodPost, path, body, nil)
+}
+
+// DeleteWorklog removes a worklog entry by ID. Returns 404 from the API
+// when the entry doesn't exist; 403 when the current user can't delete
+// it (Jira lets only the author and admins delete).
+func (c *Client) DeleteWorklog(ctx context.Context, issueKey, worklogID string) error {
+	if issueKey == "" || worklogID == "" {
+		return errors.New("jira: issue key and worklog ID are required")
+	}
+	path := "/rest/api/3/issue/" + url.PathEscape(issueKey) + "/worklog/" + url.PathEscape(worklogID)
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
 }
 
 // AddWatcher subscribes the given account to issue change notifications.

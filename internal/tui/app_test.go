@@ -447,6 +447,7 @@ func (l *recordingLoader) DeleteLink(context.Context, string) error             
 func (l *recordingLoader) AddWatcher(context.Context, string, string) error          { return nil }
 func (l *recordingLoader) RemoveWatcher(context.Context, string, string) error       { return nil }
 func (l *recordingLoader) AddWorklog(context.Context, string, string, string) error  { return nil }
+func (l *recordingLoader) DeleteWorklog(context.Context, string, string) error        { return nil }
 func (l *recordingLoader) GetMyself(context.Context) (jira.User, error)             { return jira.User{}, nil }
 func (l *recordingLoader) Projects(context.Context) ([]jira.Project, error)         { return nil, nil }
 func (l *recordingLoader) IssueTypesForProject(context.Context, string) ([]jira.IssueType, error) {
