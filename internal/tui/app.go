@@ -2,8 +2,11 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -653,6 +656,73 @@ func (m *Model) activeStructure() (structure.Structure, bool) {
 		return all[0], true
 	}
 	return structure.Structure{}, false
+}
+
+// editStructuresYAML suspends the TUI and runs the user's $EDITOR (fallback
+// vim) on the structures YAML for the active project. Creates the file with
+// a starter template if it doesn't exist. The fsnotify watcher picks up the
+// change after exit; toast surfaces an error if the editor failed.
+func (m Model) editStructuresYAML() (tea.Model, tea.Cmd) {
+	if m.structures == nil {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "structures: store unavailable", Level: ToastError}
+		}
+	}
+	pk := m.defaultProject
+	if pk == "" {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "structures: set default project to edit YAML", Level: ToastInfo}
+		}
+	}
+	path := m.structures.Path(pk)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "structures: " + err.Error(), Level: ToastError}
+		}
+	}
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		template := []byte(starterStructuresYAML(pk))
+		if werr := os.WriteFile(path, template, 0o600); werr != nil {
+			return m, func() tea.Msg {
+				return ToastMsg{Text: "structures: " + werr.Error(), Level: ToastError}
+			}
+		}
+	}
+	editor := os.Getenv("VISUAL")
+	if editor == "" {
+		editor = os.Getenv("EDITOR")
+	}
+	if editor == "" {
+		editor = "vim"
+	}
+	cmd := exec.Command(editor, path)
+	return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
+		if err != nil {
+			return ToastMsg{Text: "editor: " + err.Error(), Level: ToastError}
+		}
+		return ToastMsg{Text: "structures reloaded", Level: ToastInfo}
+	})
+}
+
+// starterStructuresYAML returns a commented-out example users can edit when
+// no file exists yet for project pk.
+func starterStructuresYAML(pk string) string {
+	return "# ripjira structures for " + pk + "\n" +
+		"# Each entry is a structure shown in the STRUCTURES picker.\n" +
+		"# Field whitelist: status, status_category, priority, issuetype,\n" +
+		"# assignee, reporter, parent_key, labels, project.\n" +
+		"#\n" +
+		"# - id: my-team\n" +
+		"#   name: My team\n" +
+		"#   sections:\n" +
+		"#     - title: In progress\n" +
+		"#       filter:\n" +
+		"#         status: [Open, \"In Progress\"]\n" +
+		"#         assignee: { exists: true }\n" +
+		"#       group_by: [priority]\n" +
+		"#     - title: Blocked\n" +
+		"#       filter:\n" +
+		"#         labels: [blocker]\n"
 }
 
 // openStructurePicker pops the picker overlay populated with the active
@@ -1318,6 +1388,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openEpicPicker()
 	case key.Matches(msg, m.keymap.OpenStructures):
 		return m.openStructurePicker()
+	case key.Matches(msg, m.keymap.EditStructures):
+		return m.editStructuresYAML()
 	case key.Matches(msg, m.keymap.NextSubView):
 		return m.handleViewSelected(m.nextSubView())
 	case key.Matches(msg, m.keymap.PrevSubView):
@@ -2801,12 +2873,7 @@ func (m Model) View() string {
 		)
 	}
 
-	subTabBar := m.renderSubTabs()
-	parts := []string{topBar}
-	if subTabBar != "" {
-		parts = append(parts, subTabBar)
-	}
-	parts = append(parts, tabBar, body)
+	parts := []string{topBar, tabBar, body}
 	if toasts != "" {
 		parts = append(parts, toasts)
 	}
@@ -2926,9 +2993,6 @@ func (m Model) paneDims() (listW, detailW, previewW, contentHeight int) {
 	tabBar := m.renderTabBar()
 	hintBar := m.renderHintBar()
 	overhead := lipgloss.Height(topBar) + lipgloss.Height(tabBar) + lipgloss.Height(hintBar)
-	if sub := m.renderSubTabs(); sub != "" {
-		overhead += lipgloss.Height(sub)
-	}
 	if v := m.toasts.View(m.styles); v != "" {
 		overhead += lipgloss.Height(v)
 	}
@@ -2962,38 +3026,28 @@ func (m Model) renderTopBar() string {
 // highlighted. Search is a transient mode (entered via `/`) rather than a
 // tab; when active it appends a SEARCH cell so the user has a visual cue,
 // but it is not part of the `[`/`]` cycle.
+// renderTabs draws a single-row drill-down strip: the active top group's
+// label, then a `›` separator, then the sub-views of that group as pills.
+// Other top groups are reachable via `}`/`{`. When the active top has only
+// one sub-view (Sprint / Structures / Search), only the top label is shown.
 func (m Model) renderTabs() string {
 	active := panes.TopGroup(m.view)
-	cells := make([]string, 0, len(panes.AllTopTabs()))
-	for _, t := range panes.AllTopTabs() {
-		label := t.String()
-		if t == active {
-			cells = append(cells, m.styles.ActiveTab.Render(label))
-		} else {
-			cells = append(cells, m.styles.InactiveTab.Render(label))
-		}
-	}
-	return lipgloss.JoinHorizontal(lipgloss.Top, cells...)
-}
-
-// renderSubTabs returns the second row of tabs scoped to the active top tab.
-// Returns "" when the top tab has only one sub-view (no row to render).
-func (m Model) renderSubTabs() string {
-	subs := panes.SubViews(panes.TopGroup(m.view))
+	topCell := m.styles.ActiveTab.Render(active.String())
+	subs := panes.SubViews(active)
 	if len(subs) <= 1 {
-		return ""
+		return topCell
 	}
-	cells := make([]string, 0, len(subs))
+	subCells := make([]string, 0, len(subs))
 	for _, v := range subs {
 		label := panes.SubLabel(v)
 		if v == m.view {
-			cells = append(cells, m.styles.ActiveTab.Render(label))
+			subCells = append(subCells, m.styles.ActiveTab.Render(label))
 		} else {
-			cells = append(cells, m.styles.InactiveTab.Render(label))
+			subCells = append(subCells, m.styles.InactiveTab.Render(label))
 		}
 	}
-	row := lipgloss.JoinHorizontal(lipgloss.Top, cells...)
-	return m.styles.Muted.Render("  ") + row
+	sep := m.styles.Muted.Render(" › ")
+	return topCell + sep + lipgloss.JoinHorizontal(lipgloss.Top, subCells...)
 }
 
 // renderPrefetchIndicator returns a static "▒ caching N/M" chip when the

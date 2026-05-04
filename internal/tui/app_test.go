@@ -882,7 +882,9 @@ func TestTabBar_RendersTwoLabels(t *testing.T) {
 	m := newTestModel(t)
 	m, _ = sendSize(m, 80, 24)
 	out := stripANSI(m.View())
-	for _, want := range []string{"MY ISSUES", "SPRINT", "STRUCTURES", "ASSIGNED", "WATCHING", "REPORTED"} {
+	// Drill-down: only the active top group (MY ISSUES) and its subs are
+	// rendered; other top groups are reachable via }/{ but not on screen.
+	for _, want := range []string{"MY ISSUES", "ASSIGNED", "WATCHING", "REPORTED", "RECENT", "MENTIONS"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("tab bar missing %q\nfull output:\n%s", want, out)
 		}

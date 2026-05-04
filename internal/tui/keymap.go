@@ -42,6 +42,7 @@ type Keymap struct {
 	EditDescription    key.Binding
 	EditEpic           key.Binding
 	OpenStructures key.Binding
+	EditStructures key.Binding
 	NextSubView    key.Binding
 	PrevSubView    key.Binding
 	AddLink            key.Binding
@@ -186,6 +187,10 @@ func DefaultKeymap() Keymap {
 			key.WithKeys("\\"),
 			key.WithHelp("\\", "pick structure"),
 		),
+		EditStructures: key.NewBinding(
+			key.WithKeys("e"),
+			key.WithHelp("e", "edit structures yaml"),
+		),
 		NextSubView: key.NewBinding(
 			key.WithKeys("]"),
 			key.WithHelp("]", "next sub-tab"),
@@ -245,7 +250,7 @@ func (k Keymap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.CycleFocusForward, k.CycleFocusBackward, k.NextTab, k.PrevTab, k.FocusLeft, k.FocusRight, k.Top, k.Bottom, k.ToggleGroup, k.OpenSearch, k.OpenOptions},
 		{k.Open, k.Status, k.Assign, k.Comment, k.New, k.NewSubtask, k.Browser, k.Refresh},
-		{k.OpenStructures, k.NextSubView, k.PrevSubView},
+		{k.OpenStructures, k.EditStructures, k.NextSubView, k.PrevSubView},
 		{k.Help, k.CloseOverlay, k.Quit},
 	}
 }
@@ -267,6 +272,6 @@ func (k Keymap) All() []key.Binding {
 		k.ToggleGroup, k.Open,
 		k.Status, k.Assign, k.Comment, k.New, k.NewSubtask, k.Browser,
 		k.Refresh, k.OpenSearch, k.OpenOptions, k.Help, k.CloseOverlay, k.Quit,
-		k.OpenStructures, k.NextSubView, k.PrevSubView,
+		k.OpenStructures, k.EditStructures, k.NextSubView, k.PrevSubView,
 	}
 }

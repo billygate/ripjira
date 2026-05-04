@@ -159,16 +159,17 @@ then one bucket per parent, then a trailing "No epic" bucket.
 `epic_issue_types` in `config.yaml` controls which issuetype names
 count as epic-shaped (defaults to `[Epic, "Epic Feature"]`).
 
-### Tabs (two-level)
+### Tabs (drill-down)
 
-The tab strip is two rows. **Top row** groups views by scope:
+The tab strip is one row, drill-down style: the active top group label, a
+`›` separator, then the sub-views of that group as pills. Other top groups
+are not rendered — they are reachable via `}`/`{`. Top groups by scope:
 `MY ISSUES` (personal: assigned/watching/reported/recent/mentions),
 `SPRINT`, `STRUCTURES`, `SEARCH` — the latter three are project-scoped.
-**Sub row** appears only when the active top has more than one sub-view; it
-lists the scope inside the group (`ASSIGNED`, `WATCHING`, …).
-Navigation: `}`/`{` cycles the top row; `]`/`[` cycles the sub row. The last
-sub-view per top is persisted in `state.LastSubView` so re-entering a top
-returns to the user's previous scope.
+When the active top has only one sub-view (Sprint/Structures/Search), only
+the top label is shown. Navigation: `}`/`{` cycles the top, `]`/`[` cycles
+the sub. The last sub-view per top is persisted in `state.LastSubView` so
+re-entering a top returns to the user's previous scope.
 
 ### Structures
 
