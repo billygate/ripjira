@@ -3,6 +3,7 @@ package structure
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -79,6 +80,35 @@ func TestDefaultDir_XDGOverridesHome(t *testing.T) {
 	}
 	if got != filepath.Join("/tmp/cfg-xyz", "ripjira", "structures") {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestStore_LoadPreservesScope(t *testing.T) {
+	dir := t.TempDir()
+	yamlBody := `- id: s1
+  name: n
+  sections:
+    - title: T
+      filter:
+        status: [Open]
+  scope:
+    labels: [Q12026, Q22026]
+`
+	if err := os.WriteFile(filepath.Join(dir, "ABC.yml"), []byte(yamlBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(dir)
+	got, err := s.Load("ABC")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	user := got[len(got)-1]
+	if user.ID != "s1" {
+		t.Fatalf("want id s1, got %q", user.ID)
+	}
+	want := []string{"Q12026", "Q22026"}
+	if !reflect.DeepEqual(user.Scope["labels"].In, want) {
+		t.Fatalf("scope.labels.in: want %v, got %v", want, user.Scope["labels"].In)
 	}
 }
 
