@@ -76,10 +76,19 @@ func GroupTree(issues []Issue, groupBy []string, parentPath string, depth int) [
 // AppliedSection per non-empty section, in declaration order. Empty
 // sections (zero matches) are dropped.
 func Apply(issues []Issue, s *Structure) []AppliedSection {
+	scoped := issues
+	if len(s.Scope) > 0 {
+		scoped = make([]Issue, 0, len(issues))
+		for _, is := range issues {
+			if matchesFilter(is, s.Scope) {
+				scoped = append(scoped, is)
+			}
+		}
+	}
 	out := make([]AppliedSection, 0, len(s.Sections))
 	for i := range s.Sections {
 		sec := &s.Sections[i]
-		matched := filterIssues(issues, sec.Filter, sec.AnyOf)
+		matched := filterIssues(scoped, sec.Filter, sec.AnyOf)
 		if len(matched) == 0 {
 			continue
 		}
