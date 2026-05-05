@@ -15,7 +15,7 @@ import (
 // stale-by-up-to-a-minute is the trade for instant back-and-forth navigation
 // between recently viewed issues.
 const (
-	DefaultDetailCacheSize = 64
+	DefaultDetailCacheSize = 128
 	DefaultDetailCacheTTL  = 15 * time.Minute
 	// DefaultPrefetchConcurrency is the number of in-flight prefetch
 	// LoadIssue calls. Jira's per-tenant rate limits make 2 a safe default
