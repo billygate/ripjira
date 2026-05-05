@@ -34,16 +34,22 @@ type ScopeEditor struct {
 	rowEdit *rowEditState
 }
 
+// NewScopeEditor returns a hidden editor. closeKey hides the overlay
+// (or cancels the row sub-editor when one is open).
 func NewScopeEditor(closeKey key.Binding) ScopeEditor {
 	return ScopeEditor{closeBinding: closeKey}
 }
 
+// Visible reports whether the overlay is currently shown.
 func (e ScopeEditor) Visible() bool { return e.visible }
 
+// Rows returns the current row set (post-edits, pre-save).
 func (e ScopeEditor) Rows() []structureadapter.ScopeRow {
 	return append([]structureadapter.ScopeRow(nil), e.rows...)
 }
 
+// Show opens the editor with the supplied rows. The provider supplies
+// autocomplete suggestions for value fields; pass nil for none.
 func (e ScopeEditor) Show(title string, rows []structureadapter.ScopeRow, values ScopeValuesProvider) ScopeEditor {
 	e.title = title
 	e.rows = append([]structureadapter.ScopeRow(nil), rows...)
@@ -54,16 +60,20 @@ func (e ScopeEditor) Show(title string, rows []structureadapter.ScopeRow, values
 	return e
 }
 
+// ShowWithID is Show plus an ID echoed back in ScopeSavedMsg so the
+// caller knows which structure the saved rows belong to.
 func (e ScopeEditor) ShowWithID(id, title string, rows []structureadapter.ScopeRow, values ScopeValuesProvider) ScopeEditor {
 	e = e.Show(title, rows, values)
 	e.structureID = id
 	return e
 }
 
+// Hide closes the overlay and clears state.
 func (e ScopeEditor) Hide() ScopeEditor {
 	return ScopeEditor{closeBinding: e.closeBinding}
 }
 
+// Update consumes input while the overlay is visible.
 func (e ScopeEditor) Update(msg tea.Msg) (ScopeEditor, tea.Cmd) {
 	if !e.visible {
 		return e, nil
@@ -111,6 +121,7 @@ func (e ScopeEditor) Update(msg tea.Msg) (ScopeEditor, tea.Cmd) {
 	return e, nil
 }
 
+// View renders the overlay.
 func (e ScopeEditor) View(s styles.Styles) string {
 	if !e.visible {
 		return ""
@@ -153,7 +164,7 @@ func scopeRowLine(r structureadapter.ScopeRow) string {
 type rowEditStep int
 
 const (
-	stepField  rowEditStep = iota
+	stepField rowEditStep = iota
 	stepOp
 	stepValues
 )
@@ -169,8 +180,11 @@ type rowEditState struct {
 	errMsg       string
 }
 
+// InRowEdit reports whether the row sub-editor is currently open.
 func (e ScopeEditor) InRowEdit() bool { return e.rowEdit != nil }
 
+// RowEditHasError reports whether the row sub-editor is showing a
+// validation error (duplicate field, invalid regex, missing value).
 func (e ScopeEditor) RowEditHasError() bool {
 	return e.rowEdit != nil && e.rowEdit.errMsg != ""
 }

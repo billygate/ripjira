@@ -5,6 +5,7 @@ import "github.com/billygate/ripjira/internal/structure"
 // ScopeOp is the operator chosen in the visual scope editor.
 type ScopeOp string
 
+// Operators recognised by the scope editor; one row carries one operator.
 const (
 	OpIn       ScopeOp = "in"
 	OpNot      ScopeOp = "not"

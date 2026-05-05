@@ -67,16 +67,16 @@ func TestScopeEditor_AddRow_TypeFieldOpValues(t *testing.T) {
 	if !e.InRowEdit() {
 		t.Fatal("expected row-edit state after 'a'")
 	}
-	for _, r := range []rune("labels") {
+	for _, r := range "labels" {
 		e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyTab})
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyTab})
-	for _, r := range []rune("Q12026") {
+	for _, r := range "Q12026" {
 		e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	for _, r := range []rune("Q22026") {
+	for _, r := range "Q22026" {
 		e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -114,7 +114,7 @@ func TestScopeEditor_DuplicateFieldRejected(t *testing.T) {
 		{Field: "labels", Op: structureadapter.OpIn, Values: []string{"x"}},
 	}, nil)
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
-	for _, r := range []rune("labels") {
+	for _, r := range "labels" {
 		e, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
 	e, _ = e.Update(tea.KeyMsg{Type: tea.KeyTab})

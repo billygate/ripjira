@@ -105,7 +105,8 @@ ripjira login --reset   # delete the stored token first, then re-run
 | `o`                | open current issue in your browser    |
 | `r`                | force refresh                         |
 | `\`                | pick a structure (Structures tab)     |
-| `e`                | edit structures YAML in $EDITOR       |
+| `e` (in picker)    | edit scope of highlighted structure   |
+| `e` (main view)    | edit structures YAML in $EDITOR       |
 | `?`                | show full help overlay                |
 | `esc`              | close overlay (or arm quit)           |
 | `q`, `ctrl+c`      | quit                                  |
