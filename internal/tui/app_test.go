@@ -17,9 +17,11 @@ import (
 
 	"github.com/billygate/ripjira/internal/jira"
 	"github.com/billygate/ripjira/internal/state"
+	"github.com/billygate/ripjira/internal/structure"
 	"github.com/billygate/ripjira/internal/tui/grouping"
 	"github.com/billygate/ripjira/internal/tui/overlays"
 	"github.com/billygate/ripjira/internal/tui/panes"
+	structureadapter "github.com/billygate/ripjira/internal/tui/structureadapter"
 	"github.com/billygate/ripjira/internal/tui/themes"
 )
 
@@ -1160,5 +1162,68 @@ func TestApp_CreateOverlayReporterPrefilled(t *testing.T) {
 	}
 	if rep.UserAccountID() != "acc-me" {
 		t.Fatalf("reporter UserAccountID = %q, want acc-me", rep.UserAccountID())
+	}
+}
+
+func TestApp_ScopeEditor_OpensOnEditScopeMsg(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "ABC.yml"), []byte(`- id: u1
+  name: User One
+  sections:
+    - title: All
+      filter:
+        status: [Open]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pal, err := themes.ByName("tokyonight")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := structure.NewStore(dir)
+	m := New(pal,
+		WithStructures(context.Background(), store),
+		WithDefaultProject("ABC"),
+	)
+	m2, _ := m.Update(overlays.StructureEditScopeMsg{ID: "u1"})
+	m = m2.(Model)
+	if !m.scopeEditor.Visible() {
+		t.Fatal("scope editor should be visible after StructureEditScopeMsg")
+	}
+}
+
+func TestApp_ScopeSaved_PersistsToStore(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "ABC.yml"), []byte(`- id: u1
+  name: User One
+  sections:
+    - title: All
+      filter:
+        status: [Open]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pal, err := themes.ByName("tokyonight")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := structure.NewStore(dir)
+	m := New(pal,
+		WithStructures(context.Background(), store),
+		WithDefaultProject("ABC"),
+	)
+	saved := overlays.ScopeSavedMsg{
+		StructureID: "u1",
+		Rows: []structureadapter.ScopeRow{
+			{Field: "labels", Op: structureadapter.OpIn, Values: []string{"Q12026"}},
+		},
+	}
+	m.Update(saved)
+	got, err := store.FindByID("ABC", "u1")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if len(got.Scope) == 0 || len(got.Scope["labels"].In) == 0 || got.Scope["labels"].In[0] != "Q12026" {
+		t.Fatalf("scope not persisted: %#v", got.Scope)
 	}
 }
