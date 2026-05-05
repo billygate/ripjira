@@ -3,6 +3,7 @@ package structure
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -64,5 +65,41 @@ filter:
 	}
 	if e := s.Filter["assignee"].Exists; e == nil || !*e {
 		t.Fatalf("assignee.exists should be true, got %#v", e)
+	}
+}
+
+func TestStructure_YAMLRoundTrip_WithScope(t *testing.T) {
+	in := Structure{
+		ID:   "s1",
+		Name: "n",
+		Scope: SectionFilter{
+			"labels": {In: []string{"Q12026", "Q22026"}},
+		},
+		Sections: []Section{{Title: "T"}},
+	}
+	out, err := yaml.Marshal(&in)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(out), "scope:") {
+		t.Fatalf("expected scope in YAML, got:\n%s", out)
+	}
+	var got Structure
+	if err := yaml.Unmarshal(out, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !reflect.DeepEqual(got.Scope, in.Scope) {
+		t.Fatalf("scope round-trip mismatch:\nwant %#v\ngot  %#v", in.Scope, got.Scope)
+	}
+}
+
+func TestStructure_YAMLRoundTrip_EmptyScopeOmitted(t *testing.T) {
+	in := Structure{ID: "s1", Name: "n", Sections: []Section{{Title: "T"}}}
+	out, err := yaml.Marshal(&in)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(out), "scope:") {
+		t.Fatalf("expected scope omitted, got:\n%s", out)
 	}
 }
