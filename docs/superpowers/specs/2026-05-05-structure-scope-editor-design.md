@@ -88,9 +88,9 @@ Bindings:
 - `Enter` on `+ add row` (or `a` anywhere) — open row editor for a new row.
 - `d` — delete highlighted row.
 - `s` — save and close. Emits `ScopeSavedMsg{Rows: []ScopeRow}`.
-- `Esc` — cancel. If dirty, arm a confirm-toast (second `Esc` within 3s
-  discards, any other key cancels the discard) — same pattern as the
-  app-level quit confirmation.
+- `Esc` — cancel and discard pending edits. (No dirty-confirm in v1;
+  `s` to save is explicit, and the editor only mutates the in-memory
+  row list — discarding is cheap.)
 
 **Row-editor state** — modal sub-overlay over the list, three steps via
 `Tab`/`Shift+Tab`:
@@ -170,8 +170,7 @@ emits `ScopeSavedMsg{Rows []ScopeRow}`. Conversion to/from
   inline error; row cannot be saved until fixed.
 - **Cache empty for a field** — value picker shows no suggestions,
   free input still works.
-- **Dirty cancel** — armed Esc/Esc as described above; first Esc shows
-  toast "press esc again to discard changes".
+- **Cancel** — `Esc` discards pending edits without confirmation.
 - **Large value lists** — chip multi-select scrolls horizontally
   inside its line; suggestion popup caps at 10 visible items with
   scroll.
