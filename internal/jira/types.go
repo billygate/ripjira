@@ -32,9 +32,6 @@ type IssueType struct {
 	Subtask bool
 }
 
-// SubtaskRef is a lightweight reference to a child issue, sourced from
-// the parent's `fields.subtasks` array. Only the fields needed for
-// display are populated.
 // Worklog is a single time-entry on an issue.
 type Worklog struct {
 	ID        string
@@ -44,6 +41,9 @@ type Worklog struct {
 	Started   time.Time
 }
 
+// SubtaskRef is a lightweight reference to a child issue, sourced from
+// the parent's `fields.subtasks` array. Only the fields needed for
+// display are populated.
 type SubtaskRef struct {
 	Key     string
 	Summary string
@@ -143,27 +143,27 @@ type Attachment struct {
 
 // Issue is the domain model for a Jira issue.
 type Issue struct {
-	Key         string
-	Summary     string
-	Status      Status
-	Priority    Priority
-	Type        IssueType
-	Assignee    *User
-	Reporter    *User
-	Labels      []string
-	DueDate     string // YYYY-MM-DD; empty when not set
-	Description string // markdown converted from renderedFields HTML
+	Key           string
+	Summary       string
+	Status        Status
+	Priority      Priority
+	Type          IssueType
+	Assignee      *User
+	Reporter      *User
+	Labels        []string
+	DueDate       string // YYYY-MM-DD; empty when not set
+	Description   string // markdown converted from renderedFields HTML
 	ParentKey     string // empty when issue has no parent
 	ParentSummary string // empty when issue has no parent
-	Comments    []Comment
-	Worklogs    []Worklog
-	Links       []IssueLink
-	Subtasks    []SubtaskRef
-	Attachments []Attachment
-	Created     time.Time
-	Updated     time.Time
-	Transitions []Transition
-	URL         string // baseURL + "/browse/" + Key
+	Comments      []Comment
+	Worklogs      []Worklog
+	Links         []IssueLink
+	Subtasks      []SubtaskRef
+	Attachments   []Attachment
+	Created       time.Time
+	Updated       time.Time
+	Transitions   []Transition
+	URL           string // baseURL + "/browse/" + Key
 
 	// CustomFields holds raw text-rendered values for any customfield_<id>
 	// the client was configured to fetch. Keys are the Jira field IDs

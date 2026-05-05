@@ -41,11 +41,11 @@ type Keymap struct {
 	EditDueDate        key.Binding
 	EditDescription    key.Binding
 	EditEpic           key.Binding
-	OpenTopGo      key.Binding
-	OpenStructures key.Binding
-	EditStructures key.Binding
-	NextSubView    key.Binding
-	PrevSubView    key.Binding
+	OpenTopGo          key.Binding
+	OpenStructures     key.Binding
+	EditStructures     key.Binding
+	NextSubView        key.Binding
+	PrevSubView        key.Binding
 	AddLink            key.Binding
 	RemoveLink         key.Binding
 	Watch              key.Binding

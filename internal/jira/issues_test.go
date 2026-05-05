@@ -786,7 +786,7 @@ func TestIssueCreatedParsed(t *testing.T) {
 	if err := json.Unmarshal(raw, &dto); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	defer srv.Close()
 	c := newTestClient(t, srv, "a@b.com", "tok")
 	iss := c.dtoToIssue(dto)
@@ -826,7 +826,7 @@ func TestDtoToIssue_PopulatesParent(t *testing.T) {
 	if err := json.Unmarshal(body, &dto); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	defer srv.Close()
 	c := newTestClient(t, srv, "a@b.com", "tok")
 	got := c.dtoToIssue(dto)
@@ -840,7 +840,7 @@ func TestDtoToIssue_PopulatesParent(t *testing.T) {
 
 func TestDtoToIssue_NoParent(t *testing.T) {
 	dto := issueDTO{Key: "BILLING-1"}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	defer srv.Close()
 	c := newTestClient(t, srv, "a@b.com", "tok")
 	got := c.dtoToIssue(dto)

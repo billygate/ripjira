@@ -114,6 +114,8 @@ type SortField string
 // SortDir is asc/desc.
 type SortDir string
 
+// Whitelisted SortField values, SortDir directions, and the max number
+// of OrderBy tiers a Section may declare.
 const (
 	SortFieldPriority SortField = "priority"
 	SortFieldUpdated  SortField = "updated"

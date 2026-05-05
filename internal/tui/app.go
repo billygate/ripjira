@@ -64,18 +64,18 @@ type Model struct {
 	height     int
 	statusText string
 
-	toasts     Toasts
-	spinner    Spinner
-	help       overlays.Help
-	transition overlays.Transition
-	comment    overlays.Comment
-	assign     overlays.Assign
-	create     overlays.Create
-	options    overlays.Options
-	edit       overlays.Edit
-	favorites  overlays.Favorites
-	link        overlays.Link
-	linkRemove  overlays.RemoveLink
+	toasts        Toasts
+	spinner       Spinner
+	help          overlays.Help
+	transition    overlays.Transition
+	comment       overlays.Comment
+	assign        overlays.Assign
+	create        overlays.Create
+	options       overlays.Options
+	edit          overlays.Edit
+	favorites     overlays.Favorites
+	link          overlays.Link
+	linkRemove    overlays.RemoveLink
 	worklog       overlays.Worklog
 	worklogRemove overlays.RemoveWorklog
 	description   overlays.Description
@@ -269,33 +269,33 @@ func New(p themes.Palette, opts ...Option) Model {
 	km := DefaultKeymap()
 	st := styles.New(p)
 	m := Model{
-		keymap:     km,
-		palette:    p,
-		styles:     st,
-		focus:      FocusList,
-		toasts:     NewToasts(),
-		spinner:    NewSpinner(),
-		help:       overlays.NewHelp(buildHelpColumns(km), km.CloseOverlay),
-		transition: overlays.NewTransition(km.CloseOverlay),
-		comment:    overlays.NewComment(km.CloseOverlay),
-		assign:     overlays.NewAssign(km.CloseOverlay, overlays.DefaultAssignDebounce),
-		create:     overlays.NewCreate(km.CloseOverlay, ""),
-		options:    overlays.NewOptions(km.CloseOverlay, "status", "priority", false),
-		edit:       overlays.NewEdit(km.CloseOverlay),
-		favorites:  overlays.NewFavorites(km.CloseOverlay),
-		link:       overlays.NewLink(km.CloseOverlay),
-		linkRemove:  overlays.NewRemoveLink(km.CloseOverlay),
+		keymap:        km,
+		palette:       p,
+		styles:        st,
+		focus:         FocusList,
+		toasts:        NewToasts(),
+		spinner:       NewSpinner(),
+		help:          overlays.NewHelp(buildHelpColumns(km), km.CloseOverlay),
+		transition:    overlays.NewTransition(km.CloseOverlay),
+		comment:       overlays.NewComment(km.CloseOverlay),
+		assign:        overlays.NewAssign(km.CloseOverlay, overlays.DefaultAssignDebounce),
+		create:        overlays.NewCreate(km.CloseOverlay, ""),
+		options:       overlays.NewOptions(km.CloseOverlay, "status", "priority", false),
+		edit:          overlays.NewEdit(km.CloseOverlay),
+		favorites:     overlays.NewFavorites(km.CloseOverlay),
+		link:          overlays.NewLink(km.CloseOverlay),
+		linkRemove:    overlays.NewRemoveLink(km.CloseOverlay),
 		worklog:       overlays.NewWorklog(km.CloseOverlay),
 		worklogRemove: overlays.NewRemoveWorklog(km.CloseOverlay),
 		description:   overlays.NewDescription(km.CloseOverlay),
-		priority:    overlays.NewPriority(km.CloseOverlay),
-		epicPicker:   overlays.NewEpic(),
-		structPicker: overlays.NewStructures(km.CloseOverlay),
-		scopeEditor:  overlays.NewScopeEditor(km.CloseOverlay),
-		topGo:        overlays.NewTopGo(km.CloseOverlay),
-		list:       panes.New(st, grouping.ByStatus{}, 1, 1),
-		detail:     panes.NewDetail(st, panesNoopLoader{}, 1, 1),
-		browser:    OSOpener{},
+		priority:      overlays.NewPriority(km.CloseOverlay),
+		epicPicker:    overlays.NewEpic(),
+		structPicker:  overlays.NewStructures(km.CloseOverlay),
+		scopeEditor:   overlays.NewScopeEditor(km.CloseOverlay),
+		topGo:         overlays.NewTopGo(km.CloseOverlay),
+		list:          panes.New(st, grouping.ByStatus{}, 1, 1),
+		detail:        panes.NewDetail(st, panesNoopLoader{}, 1, 1),
+		browser:       OSOpener{},
 	}
 	for _, o := range opts {
 		o(&m)
@@ -660,11 +660,11 @@ func (m *Model) feedList(issues []jira.Issue) {
 	applied := structure.Apply(adapters, &st)
 	secs := make([]panes.Section, 0, len(applied))
 	for _, a := range applied {
-		real := make([]jira.Issue, len(a.Issues))
+		raw := make([]jira.Issue, len(a.Issues))
 		for i, x := range a.Issues {
-			real[i] = x.(structureadapter.Adapter).Issue()
+			raw[i] = x.(structureadapter.Adapter).Issue()
 		}
-		section := panes.Section{Title: a.Title, ReadOnly: st.IsReadOnly(), Issues: real}
+		section := panes.Section{Title: a.Title, ReadOnly: st.IsReadOnly(), Issues: raw}
 		if len(a.GroupBy) > 0 {
 			tree := structure.GroupTree(a.Issues, a.GroupBy, "", 0)
 			section.Tree = treeToSectionNodes(tree)
@@ -838,7 +838,6 @@ func (m Model) openStructurePicker() (tea.Model, tea.Cmd) {
 	m.structPicker = m.structPicker.Show(entries, selID)
 	return m, nil
 }
-
 
 // persistLastView writes the currently active ViewKind to state.json so
 // the next session boots into the user's last view instead of MyTasks.

@@ -39,7 +39,7 @@ func Watch(ctx context.Context, dir string) (<-chan Event, error) {
 	out := make(chan Event, 8)
 	go func() {
 		defer close(out)
-		defer w.Close()
+		defer func() { _ = w.Close() }()
 		for {
 			select {
 			case <-ctx.Done():

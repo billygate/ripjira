@@ -437,20 +437,20 @@ func (l *recordingLoader) LoadTransitions(context.Context, string) ([]jira.Trans
 func (l *recordingLoader) LoadAttachment(context.Context, string) ([]byte, string, error) {
 	return nil, "", nil
 }
-func (l *recordingLoader) DoTransition(context.Context, string, string) error       { return nil }
-func (l *recordingLoader) AddComment(context.Context, string, string) error         { return nil }
-func (l *recordingLoader) SearchUsers(context.Context, string) ([]jira.User, error) { return nil, nil }
-func (l *recordingLoader) AssignIssue(context.Context, string, string) error        { return nil }
+func (l *recordingLoader) DoTransition(context.Context, string, string) error         { return nil }
+func (l *recordingLoader) AddComment(context.Context, string, string) error           { return nil }
+func (l *recordingLoader) SearchUsers(context.Context, string) ([]jira.User, error)   { return nil, nil }
+func (l *recordingLoader) AssignIssue(context.Context, string, string) error          { return nil }
 func (l *recordingLoader) UpdateFields(context.Context, string, map[string]any) error { return nil }
-func (l *recordingLoader) UpdateDescription(context.Context, string, string) error     { return nil }
-func (l *recordingLoader) CreateLink(context.Context, string, string, string) error { return nil }
-func (l *recordingLoader) DeleteLink(context.Context, string) error                  { return nil }
-func (l *recordingLoader) AddWatcher(context.Context, string, string) error          { return nil }
-func (l *recordingLoader) RemoveWatcher(context.Context, string, string) error       { return nil }
-func (l *recordingLoader) AddWorklog(context.Context, string, string, string) error  { return nil }
+func (l *recordingLoader) UpdateDescription(context.Context, string, string) error    { return nil }
+func (l *recordingLoader) CreateLink(context.Context, string, string, string) error   { return nil }
+func (l *recordingLoader) DeleteLink(context.Context, string) error                   { return nil }
+func (l *recordingLoader) AddWatcher(context.Context, string, string) error           { return nil }
+func (l *recordingLoader) RemoveWatcher(context.Context, string, string) error        { return nil }
+func (l *recordingLoader) AddWorklog(context.Context, string, string, string) error   { return nil }
 func (l *recordingLoader) DeleteWorklog(context.Context, string, string) error        { return nil }
-func (l *recordingLoader) GetMyself(context.Context) (jira.User, error)             { return jira.User{}, nil }
-func (l *recordingLoader) Projects(context.Context) ([]jira.Project, error)         { return nil, nil }
+func (l *recordingLoader) GetMyself(context.Context) (jira.User, error)               { return jira.User{}, nil }
+func (l *recordingLoader) Projects(context.Context) ([]jira.Project, error)           { return nil, nil }
 func (l *recordingLoader) IssueTypesForProject(context.Context, string) ([]jira.IssueType, error) {
 	return nil, nil
 }
@@ -1134,11 +1134,6 @@ func TestApp_CreateOverlayReporterPrefilled(t *testing.T) {
 	// and the reporter auto-fills with (me).
 	m := newTestModel(t)
 	m.accountID = "acc-me"
-
-	// Set the current user account ID on the create overlay (simulating
-	// what the root model does after bootstrap completes).
-	c := m.Create()
-	c = c.SetCurrentUserAccountID(m.accountID)
 
 	// Simulate what happens when the create overlay loads metadata for a
 	// project+type pair. We'll build the form directly using the same

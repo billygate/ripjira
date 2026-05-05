@@ -264,12 +264,12 @@ type lruEntry[V any] struct {
 	exp time.Time
 }
 
-func newLRU[V any](cap int, ttl time.Duration, now func() time.Time) *lru[V] {
+func newLRU[V any](capacity int, ttl time.Duration, now func() time.Time) *lru[V] {
 	if now == nil {
 		now = time.Now
 	}
 	return &lru[V]{
-		cap:   cap,
+		cap:   capacity,
 		ttl:   ttl,
 		ll:    list.New(),
 		items: make(map[string]*list.Element),
