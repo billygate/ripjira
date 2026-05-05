@@ -23,6 +23,18 @@ type StructureSelectedMsg struct {
 	ID string
 }
 
+// StructureEditScopeMsg fires when the user presses `e` on a writable
+// structure entry. The root model opens the scope editor in response.
+type StructureEditScopeMsg struct {
+	ID string
+}
+
+// StructureReadOnlyMsg fires when the user presses `e` on a read-only
+// entry — the root model surfaces a toast and does not open the editor.
+type StructureReadOnlyMsg struct {
+	ID string
+}
+
 // Structures is the `S` overlay: vertical picker of available structures
 // (built-ins + user) for the active project. j/k navigate, Enter selects,
 // Esc closes.
@@ -93,6 +105,18 @@ func (p Structures) Update(msg tea.Msg) (Structures, tea.Cmd) {
 		id := p.entries[p.cursor].ID
 		hidden := p.Hide()
 		return hidden, func() tea.Msg { return StructureSelectedMsg{ID: id} }
+	case "e":
+		if len(p.entries) == 0 {
+			return p, nil
+		}
+		cur := p.entries[p.cursor]
+		if cur.ReadOnly {
+			id := cur.ID
+			return p, func() tea.Msg { return StructureReadOnlyMsg{ID: id} }
+		}
+		id := cur.ID
+		hidden := p.Hide()
+		return hidden, func() tea.Msg { return StructureEditScopeMsg{ID: id} }
 	}
 	if key.Matches(k, p.closeBinding) {
 		return p.Hide(), nil
@@ -128,7 +152,7 @@ func (p Structures) View(s styles.Styles) string {
 			rows = append(rows, line)
 		}
 	}
-	hint := s.Muted.Render("enter select    j/k navigate    " +
+	hint := s.Muted.Render("enter select · e edit scope · j/k navigate · " +
 		p.closeBinding.Help().Key + " " + p.closeBinding.Help().Desc)
 	parts := []string{title, ""}
 	parts = append(parts, rows...)
