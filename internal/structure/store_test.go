@@ -126,3 +126,23 @@ func TestStore_FindByID(t *testing.T) {
 		t.Fatal("expected not found")
 	}
 }
+
+func TestStore_SaveStructure_RoundTripsScope(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	in := Structure{
+		ID: "u1", Name: "n", ProjectKey: "ABC",
+		Sections: []Section{{Title: "T", Filter: SectionFilter{"status": In("Open")}}},
+		Scope:    SectionFilter{"labels": {In: []string{"Q12026"}}},
+	}
+	if err := s.SaveStructure(&in); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	got, err := s.FindByID("ABC", "u1")
+	if err != nil {
+		t.Fatalf("find: %v", err)
+	}
+	if got.Scope["labels"].In[0] != "Q12026" {
+		t.Fatalf("scope lost: %#v", got.Scope)
+	}
+}

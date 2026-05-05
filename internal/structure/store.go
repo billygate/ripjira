@@ -76,6 +76,50 @@ func (s *Store) Load(projectKey string) ([]Structure, error) {
 	return out, nil
 }
 
+// SaveStructure writes (or creates) the project YAML containing in. If
+// the file already has structures, the matching ID is updated in place;
+// otherwise in is appended. ID and ProjectKey must be non-empty.
+func (s *Store) SaveStructure(in *Structure) error {
+	if in.ID == "" || in.ProjectKey == "" {
+		return fmt.Errorf("save structure: ID and ProjectKey required")
+	}
+	path := s.Path(in.ProjectKey)
+	var existing []Structure
+	if body, err := os.ReadFile(path); err == nil {
+		if err := yaml.Unmarshal(body, &existing); err != nil {
+			return fmt.Errorf("parse %s: %w", path, err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	updated := false
+	for i := range existing {
+		if existing[i].ID == in.ID {
+			existing[i] = *in
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		existing = append(existing, *in)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("mkdir: %w", err)
+	}
+	body, err := yaml.Marshal(existing)
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, body, 0o600); err != nil {
+		return fmt.Errorf("write tmp: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("rename: %w", err)
+	}
+	return nil
+}
+
 // FindByID returns the structure for the given (project, id) pair or
 // ErrNotFound. Built-ins resolve without touching disk for that lookup.
 func (s *Store) FindByID(projectKey, id string) (Structure, error) {
