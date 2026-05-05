@@ -52,13 +52,18 @@ files load unchanged.
 
 ### Entry points
 
-- On the Structures overlay (`S`), pressing `e` on the highlighted entry
-  opens the scope editor for that structure.
-- On the main view (no overlay), `e` opens the scope editor for the
-  currently active structure.
-- Read-only structures (`Source != ""`) cannot be edited: `e` emits a
-  toast "structure is read-only" and does not open the editor. (Pilot
-  sync is not implemented today, but the gate is cheap and future-proof.)
+- The Structures overlay opens with `\` (existing `OpenStructures`).
+- Inside the overlay, pressing `e` on the highlighted entry opens the
+  scope editor for that structure.
+- The existing top-level `e` binding (`EditStructures` → opens YAML in
+  `$EDITOR`) is **left untouched** in this change. The visual scope
+  editor is only reachable through the structures picker. A future
+  change can repurpose top-level `e` once the visual editor covers
+  more of the YAML.
+- Read-only structures (`Source != ""`) cannot be edited: `e` on the
+  overlay emits a toast "structure is read-only" and does not open the
+  editor. (Pilot sync is not implemented today, but the gate is cheap
+  and future-proof.)
 
 ### Layout
 
@@ -137,16 +142,21 @@ emits `ScopeSavedMsg{Rows []ScopeRow}`. Conversion to/from
   issuetype, project. Unknown field ⇒ empty slice (free input still
   works). No HTTP.
 
-- `internal/tui/keymap.go` — add binding `Edit` (`e`) to `Keymap`,
-  `DefaultKeymap()`, `All()`, `FullHelp()`. Mirror in help overlay
-  (automatic) and `README.md` keymap table per CLAUDE.md hotkey rule.
+- `internal/tui/keymap.go` — no new top-level binding; the `e` inside
+  the Structures overlay is local to that overlay (handled in
+  `overlays/structures.go`). Updates limited to the overlay's footer
+  hint string.
+
+- `internal/tui/overlays/structures.go` — handle `e` on the highlighted
+  entry: emit a new `StructureEditScopeMsg{ID string}`. Update footer
+  hint to include `e edit scope`.
 
 - `internal/tui/app.go` — wiring:
-  - `e` while Structures overlay open and entry highlighted, or `e` on
-    main view: build `[]ScopeRow` from active structure's `Scope`,
-    open `ScopeEditor`. Reject if structure `IsReadOnly()` with toast.
+  - On `StructureEditScopeMsg`: look up structure by ID, reject with
+    toast if `IsReadOnly()`, otherwise build `[]ScopeRow` from
+    structure's `Scope` and open `ScopeEditor` overlay.
   - On `ScopeSavedMsg`: convert rows → `SectionFilter`, mutate the
-    active structure's `Scope`, persist via store, re-run apply, redraw.
+    target structure's `Scope`, persist via store, re-run apply, redraw.
 
 ## Edge cases
 
