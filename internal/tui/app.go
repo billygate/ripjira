@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -2961,21 +2962,34 @@ func prefetchTick() tea.Cmd {
 	})
 }
 
+// issueKeyInGroupRe extracts a Jira-style key (e.g. BILLING-10118) from a
+// group header label so cursor-on-epic-header can preview the epic itself.
+var issueKeyInGroupRe = regexp.MustCompile(`[A-Z][A-Z0-9_]*-\d+`)
+
 // syncDetailFromList mirrors the list's current selection into the detail
 // pane. When the selection is unchanged it is a no-op; when it changes (or
 // flips between issue and group header) the detail pane is told to load a
 // new issue (or clear) and the resulting batch of load commands is
-// returned.
+// returned. When the cursor sits on a group header whose key looks like a
+// Jira issue key (epic / parent grouping), the matching issue is loaded so
+// the right pane previews the epic.
 func (m *Model) syncDetailFromList() tea.Cmd {
 	cur := ""
+	var target *jira.Issue
 	if sel := m.list.Selected(); sel != nil {
 		cur = sel.Key
+		target = sel
+	} else if gk := m.list.SelectedGroupKey(); gk != "" {
+		if k := issueKeyInGroupRe.FindString(gk); k != "" {
+			cur = k
+			target = &jira.Issue{Key: k}
+		}
 	}
 	if cur == m.selectedKey {
 		return nil
 	}
 	m.selectedKey = cur
-	return m.detail.SetIssue(m.list.Selected())
+	return m.detail.SetIssue(target)
 }
 
 // View implements tea.Model.

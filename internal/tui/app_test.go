@@ -1222,3 +1222,21 @@ func TestApp_ScopeSaved_PersistsToStore(t *testing.T) {
 		t.Fatalf("scope not persisted: %#v", got.Scope)
 	}
 }
+
+func TestIssueKeyInGroupRe(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"BILLING-10118", "BILLING-10118"},
+		{"BILLING-10118  Back support Q2 2026", "BILLING-10118"},
+		{"parent_key: BILLING-42", "BILLING-42"},
+		{"No epic", ""},
+		{"Epics", ""},
+		{"PROJ_X-7  thing", "PROJ_X-7"},
+	}
+	for _, tc := range cases {
+		if got := issueKeyInGroupRe.FindString(tc.in); got != tc.want {
+			t.Errorf("FindString(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
