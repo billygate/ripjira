@@ -179,6 +179,44 @@ func TestField_OptionUpDownCyclesAllowedValues(t *testing.T) {
 	}
 }
 
+func TestBuildForm_ReordersSummaryAndDescriptionFirst(t *testing.T) {
+	meta := jira.CreateMeta{Fields: []jira.FieldMeta{
+		{ID: "priority", Name: "Priority", SchemaType: "priority", AllowedValues: []jira.FieldOption{{ID: "1", Name: "High"}}},
+		{ID: "assignee", Name: "Assignee", SchemaType: "user"},
+		{ID: "summary", Name: "Summary", SchemaType: "string"},
+		{ID: "description", Name: "Description", SchemaType: "string"},
+		{ID: "duedate", Name: "Due", SchemaType: "date"},
+	}}
+	form := BuildForm(meta, FormDefaults{})
+	wantOrder := []string{"summary", "description", "priority", "assignee", "duedate"}
+	if len(form.Fields) != len(wantOrder) {
+		t.Fatalf("fields len = %d, want %d", len(form.Fields), len(wantOrder))
+	}
+	for i, id := range wantOrder {
+		if got := form.Fields[i].Meta.ID; got != id {
+			t.Errorf("Fields[%d].ID = %q, want %q", i, got, id)
+		}
+	}
+	if !form.Fields[0].Focused() {
+		t.Error("first field (summary) should be focused")
+	}
+}
+
+func TestBuildForm_ReorderPreservesWhenSummaryAbsent(t *testing.T) {
+	meta := jira.CreateMeta{Fields: []jira.FieldMeta{
+		{ID: "priority", Name: "Priority", SchemaType: "priority", AllowedValues: []jira.FieldOption{{ID: "1", Name: "High"}}},
+		{ID: "assignee", Name: "Assignee", SchemaType: "user"},
+	}}
+	form := BuildForm(meta, FormDefaults{})
+	if len(form.Fields) != 2 {
+		t.Fatalf("fields len = %d, want 2", len(form.Fields))
+	}
+	if form.Fields[0].Meta.ID != "priority" || form.Fields[1].Meta.ID != "assignee" {
+		t.Errorf("order = [%s, %s], want [priority, assignee]",
+			form.Fields[0].Meta.ID, form.Fields[1].Meta.ID)
+	}
+}
+
 func TestField_OptionViewMarksSelectedRegardlessOfFocus(t *testing.T) {
 	form := BuildForm(sampleMeta(), FormDefaults{})
 	// Move cursor to priority (focused).
