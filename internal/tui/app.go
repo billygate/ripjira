@@ -85,6 +85,12 @@ type Model struct {
 	structPicker  overlays.Structures
 	scopeEditor   overlays.ScopeEditor
 	topGo         overlays.TopGo
+	created       overlays.Created
+
+	// createdPending holds the freshly-created issue while the wizard is in
+	// Step 4 (link to epic). On EpicPicked / EpicCancelled it is consumed:
+	// the post-create popup is shown and this is reset to the zero value.
+	createdPending jira.Issue
 
 	list   panes.List
 	detail panes.Detail
@@ -155,7 +161,8 @@ func (m Model) canArmQuit() bool {
 		m.edit.Visible() || m.favorites.Visible() || m.link.Visible() ||
 		m.linkRemove.Visible() || m.worklog.Visible() || m.worklogRemove.Visible() ||
 		m.description.Visible() || m.priority.Visible() ||
-		m.epicPicker.Visible() || m.structPicker.Visible() || m.scopeEditor.Visible() || m.topGo.Visible() {
+		m.epicPicker.Visible() || m.structPicker.Visible() || m.scopeEditor.Visible() || m.topGo.Visible() ||
+		m.created.Visible() {
 		return false
 	}
 	if m.list.SearchEditing() || m.list.LocalFilterEditing() {
@@ -294,6 +301,7 @@ func New(p themes.Palette, opts ...Option) Model {
 		structPicker:  overlays.NewStructures(km.CloseOverlay),
 		scopeEditor:   overlays.NewScopeEditor(km.CloseOverlay),
 		topGo:         overlays.NewTopGo(km.CloseOverlay),
+		created:       overlays.NewCreated(km.CopyKey, km.CopyURL, km.Browser, km.CloseOverlay),
 		list:          panes.New(st, grouping.ByStatus{}, 1, 1),
 		detail:        panes.NewDetail(st, panesNoopLoader{}, 1, 1),
 		browser:       OSOpener{},
@@ -1110,9 +1118,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleEpicsLoaded(msg)
 	case overlays.EpicCancelledMsg:
 		m.epicPicker = m.epicPicker.Hide()
+		if m.createdPending.Key != "" {
+			issue := m.createdPending
+			m.createdPending = jira.Issue{}
+			m.created = m.created.Show(issue)
+		}
 		return m, nil
 	case overlays.EpicPickedMsg:
-		return m.handleEpicPicked(msg)
+		pendingMatches := m.createdPending.Key != "" && m.createdPending.Key == msg.IssueKey
+		mm, cmd := m.handleEpicPicked(msg)
+		m = mm.(Model)
+		if pendingMatches {
+			issue := m.createdPending
+			m.createdPending = jira.Issue{}
+			m.created = m.created.Show(issue)
+		}
+		return m, cmd
 	case setParentDoneMsg:
 		return m.handleSetParentDone(msg)
 	case overlays.WorklogDeletedMsg:
@@ -1213,6 +1234,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case overlays.CreateSubmitDoneMsg:
 		parent := m.create.ParentKey() // capture BEFORE Update potentially resets it
+		typeName := m.create.SelectedIssueType().Name
 		var cmd tea.Cmd
 		m.create, cmd = m.create.Update(msg)
 		if msg.Err == nil {
@@ -1233,9 +1255,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			var refresh tea.Cmd
 			m, refresh = m.dispatchListRefresh()
+			if msg.Issue.Key != "" {
+				if m.shouldOfferEpicLink(parent, typeName) {
+					m.createdPending = msg.Issue
+					m.epicPicker = m.epicPicker.Show(msg.Issue.Key, "")
+					return m, tea.Batch(cmd, refresh, m.searchEpicsCmd(msg.Issue.Key))
+				}
+				m.created = m.created.Show(msg.Issue)
+			}
 			return m, tea.Batch(cmd, refresh)
 		}
 		return m, cmd
+	case overlays.CreatedDismissedMsg:
+		if msg.Key != "" {
+			m.list.SelectByKey(msg.Key)
+		}
+		return m, m.syncDetailFromList()
+	case overlays.CreatedCopyRequestedMsg:
+		text, label := msg.Text, msg.Label
+		return m, func() tea.Msg {
+			if err := copyToClipboard(nil, text); err != nil {
+				return ToastMsg{Text: "Copy failed: " + err.Error(), Level: ToastError}
+			}
+			return ToastMsg{Text: "Copied " + label + ": " + text, Level: ToastInfo}
+		}
+	case overlays.CreatedOpenRequestedMsg:
+		if m.browser == nil || msg.URL == "" {
+			return m, nil
+		}
+		url := msg.URL
+		opener := m.browser
+		return m, func() tea.Msg {
+			return browserOpenedMsg{URL: url, Err: opener.Open(url)}
+		}
 	case overlays.CreateCancelledMsg:
 		return m, nil
 	case overlays.OptionsAppliedMsg:
@@ -1410,6 +1462,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.scopeEditor.Visible() {
 		var cmd tea.Cmd
 		m.scopeEditor, cmd = m.scopeEditor.Update(msg)
+		return m, cmd
+	}
+	if m.created.Visible() {
+		var cmd tea.Cmd
+		m.created, cmd = m.created.Update(msg)
 		return m, cmd
 	}
 	if m.topGo.Visible() {
@@ -1902,6 +1959,23 @@ func (m Model) handlePrioritySelected(msg overlays.PrioritySelectedMsg) (tea.Mod
 		Field:    overlays.EditPriority,
 		Value:    msg.Name,
 	})
+}
+
+// shouldOfferEpicLink reports whether the create wizard should advance to
+// Step 4 (link to epic) for the just-created issue. Skipped when:
+//   - subtask mode (parent is set; subtasks inherit their parent's epic);
+//   - the issue type itself is an Epic (linking an epic to an epic is not
+//     a meaningful flow in this client).
+func (m Model) shouldOfferEpicLink(parentKey, typeName string) bool {
+	if parentKey != "" {
+		return false
+	}
+	for _, t := range m.epicTypes {
+		if strings.EqualFold(t, typeName) {
+			return false
+		}
+	}
+	return true
 }
 
 // openEpicPicker opens the epic-link picker for the current issue and
@@ -3087,6 +3161,9 @@ func (m Model) activeOverlay() string {
 		return v
 	}
 	if v := m.topGo.View(m.styles); v != "" {
+		return v
+	}
+	if v := m.created.View(m.styles); v != "" {
 		return v
 	}
 	return ""

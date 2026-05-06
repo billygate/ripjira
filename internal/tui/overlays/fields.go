@@ -364,13 +364,16 @@ func (f Field) viewOptions(s styles.Styles, multi bool) string {
 	}
 	rows := make([]string, 0, len(f.Meta.AllowedValues))
 	for i, opt := range f.Meta.AllowedValues {
-		marker := "  "
-		if multi {
-			if f.selected[opt.ID] {
-				marker = "[x] "
-			} else {
-				marker = "[ ] "
-			}
+		var marker string
+		switch {
+		case multi && f.selected[opt.ID]:
+			marker = "[x] "
+		case multi:
+			marker = "[ ] "
+		case i == f.cursor:
+			marker = "● "
+		default:
+			marker = "○ "
 		}
 		label := marker + opt.Name
 		if i == f.cursor && f.focused {
@@ -571,6 +574,38 @@ type FormDefaults struct {
 	CurrentUserAccountID string
 }
 
+// reorderFields pulls summary then description to the front while preserving
+// the relative order of everything else. The payload sent to Jira is keyed by
+// field ID, so reordering only affects rendering.
+func reorderFields(in []Field) []Field {
+	if len(in) < 2 {
+		return in
+	}
+	out := make([]Field, 0, len(in))
+	rest := make([]Field, 0, len(in))
+	var sum, desc *Field
+	for i := range in {
+		switch in[i].Meta.ID {
+		case "summary":
+			f := in[i]
+			sum = &f
+		case "description":
+			f := in[i]
+			desc = &f
+		default:
+			rest = append(rest, in[i])
+		}
+	}
+	if sum != nil {
+		out = append(out, *sum)
+	}
+	if desc != nil {
+		out = append(out, *desc)
+	}
+	out = append(out, rest...)
+	return out
+}
+
 // BuildForm classifies meta.Fields, drops any with FieldKindUnknown, focuses
 // the first remaining field, and returns the warnings list for the footer.
 func BuildForm(meta jira.CreateMeta, defaults FormDefaults) Form {
@@ -588,6 +623,7 @@ func BuildForm(meta jira.CreateMeta, defaults FormDefaults) Form {
 		}
 		fields = append(fields, newField(fm, kind))
 	}
+	fields = reorderFields(fields)
 	form := Form{Fields: fields, warnings: warnings}
 	if len(fields) > 0 {
 		focused, _ := fields[0].Focus()

@@ -464,6 +464,26 @@ func (m *List) JumpToIssue(n int) {
 	}
 }
 
+// SelectByKey moves the cursor to the row whose issue key equals key. Returns
+// true when the issue was found in the visible items, false otherwise (in
+// which case the cursor is left unchanged).
+func (m *List) SelectByKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	for idx, raw := range m.list.Items() {
+		row, ok := raw.(listItem)
+		if !ok || row.isGroup() {
+			continue
+		}
+		if row.Issue.Key == key {
+			m.list.Select(idx)
+			return true
+		}
+	}
+	return false
+}
+
 // Top moves selection to the first item.
 func (m *List) Top() { m.list.Select(0) }
 

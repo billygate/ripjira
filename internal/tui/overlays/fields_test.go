@@ -179,6 +179,72 @@ func TestField_OptionUpDownCyclesAllowedValues(t *testing.T) {
 	}
 }
 
+func TestBuildForm_ReordersSummaryAndDescriptionFirst(t *testing.T) {
+	meta := jira.CreateMeta{Fields: []jira.FieldMeta{
+		{ID: "priority", Name: "Priority", SchemaType: "priority", AllowedValues: []jira.FieldOption{{ID: "1", Name: "High"}}},
+		{ID: "assignee", Name: "Assignee", SchemaType: "user"},
+		{ID: "summary", Name: "Summary", SchemaType: "string"},
+		{ID: "description", Name: "Description", SchemaType: "string"},
+		{ID: "duedate", Name: "Due", SchemaType: "date"},
+	}}
+	form := BuildForm(meta, FormDefaults{})
+	wantOrder := []string{"summary", "description", "priority", "assignee", "duedate"}
+	if len(form.Fields) != len(wantOrder) {
+		t.Fatalf("fields len = %d, want %d", len(form.Fields), len(wantOrder))
+	}
+	for i, id := range wantOrder {
+		if got := form.Fields[i].Meta.ID; got != id {
+			t.Errorf("Fields[%d].ID = %q, want %q", i, got, id)
+		}
+	}
+	if !form.Fields[0].Focused() {
+		t.Error("first field (summary) should be focused")
+	}
+}
+
+func TestBuildForm_ReorderPreservesWhenSummaryAbsent(t *testing.T) {
+	meta := jira.CreateMeta{Fields: []jira.FieldMeta{
+		{ID: "priority", Name: "Priority", SchemaType: "priority", AllowedValues: []jira.FieldOption{{ID: "1", Name: "High"}}},
+		{ID: "assignee", Name: "Assignee", SchemaType: "user"},
+	}}
+	form := BuildForm(meta, FormDefaults{})
+	if len(form.Fields) != 2 {
+		t.Fatalf("fields len = %d, want 2", len(form.Fields))
+	}
+	if form.Fields[0].Meta.ID != "priority" || form.Fields[1].Meta.ID != "assignee" {
+		t.Errorf("order = [%s, %s], want [priority, assignee]",
+			form.Fields[0].Meta.ID, form.Fields[1].Meta.ID)
+	}
+}
+
+func TestField_OptionViewMarksSelectedRegardlessOfFocus(t *testing.T) {
+	form := BuildForm(sampleMeta(), FormDefaults{})
+	// Move cursor to priority (focused).
+	for form.Focus() != 2 {
+		form, _ = form.Update(tea.KeyMsg{Type: tea.KeyTab})
+	}
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyDown}) // value -> "2" (Medium)
+
+	st := epicTestStyles()
+	focusedView := form.Fields[2].View(st)
+	if !strings.Contains(focusedView, "● Medium") {
+		t.Errorf("focused option view missing ● marker on Medium:\n%s", focusedView)
+	}
+	if !strings.Contains(focusedView, "○ High") || !strings.Contains(focusedView, "○ Low") {
+		t.Errorf("focused option view missing ○ on unselected rows:\n%s", focusedView)
+	}
+
+	// Tab away so priority is no longer focused.
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if form.Fields[2].Focused() {
+		t.Fatal("priority field should not be focused after tab")
+	}
+	unfocused := form.Fields[2].View(st)
+	if !strings.Contains(unfocused, "● Medium") {
+		t.Errorf("unfocused option view should still mark Medium with ●:\n%s", unfocused)
+	}
+}
+
 func TestField_MultiOptionToggleWithSpace(t *testing.T) {
 	form := BuildForm(sampleMeta(), FormDefaults{})
 	for form.Focus() != 4 { // components
