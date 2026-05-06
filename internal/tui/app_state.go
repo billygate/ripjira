@@ -59,21 +59,29 @@ func (m *Model) persistLastStructure(project, id string) {
 }
 
 // loadDraft returns the saved comment-in-progress for issueKey, or "".
+// Reads the in-memory cache populated at startup; never touches disk.
 func (m Model) loadDraft(issueKey string) string {
-	if m.statePath == "" || issueKey == "" {
+	if issueKey == "" {
 		return ""
 	}
-	st, err := state.Load(m.statePath)
-	if err != nil {
-		return ""
-	}
-	return st.CommentDrafts[issueKey]
+	return m.commentDrafts[issueKey]
 }
 
-// saveDraft persists a comment-in-progress to state.json under issueKey.
-// Empty bodies clear the draft. Write happens in a goroutine.
+// saveDraft updates the cached draft synchronously and persists to
+// state.json in the background. Empty bodies clear the draft.
 func (m Model) saveDraft(issueKey, body string) {
-	if m.statePath == "" || issueKey == "" {
+	if issueKey == "" {
+		return
+	}
+	if strings.TrimSpace(body) == "" {
+		delete(m.commentDrafts, issueKey)
+	} else {
+		if m.commentDrafts == nil {
+			m.commentDrafts = map[string]string{}
+		}
+		m.commentDrafts[issueKey] = body
+	}
+	if m.statePath == "" {
 		return
 	}
 	path := m.statePath

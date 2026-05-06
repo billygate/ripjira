@@ -144,6 +144,11 @@ type Model struct {
 	// hintBar so paneDims doesn't re-render them on every View() call.
 	// Filled lazily by paneDims and invalidated on width change.
 	chromeHeights chromeHeightCache
+
+	// commentDrafts mirrors state.CommentDrafts loaded once at startup so
+	// loadDraft is a map lookup, not sync disk I/O on the main goroutine.
+	// saveDraft updates this map and persists to disk in the background.
+	commentDrafts map[string]string
 }
 
 // chromeHeightCache memoises the per-frame heights of the three single-line
@@ -209,6 +214,7 @@ func New(p themes.Palette, opts ...Option) Model {
 	m.currentStructID = map[string]string{}
 	m.loadedStructs = map[string][]structure.Structure{}
 	m.lastSubView = map[panes.TopTabKind]panes.ViewKind{}
+	m.commentDrafts = map[string]string{}
 	if m.statePath != "" {
 		if st, err := state.Load(m.statePath); err == nil {
 			if st.Grouping != "" {
@@ -224,6 +230,9 @@ func New(p themes.Palette, opts ...Option) Model {
 			}
 			m.list.SetSort(grouping.SortByName(sortName), desc)
 			m.recentKeys = append([]string(nil), st.RecentlyViewed...)
+			for k, v := range st.CommentDrafts {
+				m.commentDrafts[k] = v
+			}
 			for k, v := range st.LastStructure {
 				m.currentStructID[k] = v
 			}
