@@ -131,6 +131,12 @@ type Model struct {
 	listToken  int
 	listCancel context.CancelFunc
 
+	// recentlyCreated keeps a freshly-created issue alive in the visible list
+	// until Jira's eventually-consistent search index returns it for the
+	// active view's JQL. Cleared in handleListFetched once the server's
+	// response includes the key.
+	recentlyCreated jira.Issue
+
 	prefetchCancel context.CancelFunc
 
 	pendingQuitUntil time.Time
@@ -1252,6 +1258,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				go func() {
 					_ = state.Mutate(path, func(s *state.State) { s.LastProject = pk })
 				}()
+			}
+			if msg.Issue.Key != "" && parent == "" {
+				m.list.PrependIssue(msg.Issue)
+				m.recentlyCreated = msg.Issue
 			}
 			var refresh tea.Cmd
 			m, refresh = m.dispatchListRefresh()
@@ -3013,6 +3023,20 @@ func (m Model) handleListFetched(msg listFetchedMsg) (tea.Model, tea.Cmd) {
 	issues := msg.Issues
 	if m.view == panes.ViewRecent {
 		issues = m.reorderByRecent(issues)
+	}
+	if m.recentlyCreated.Key != "" {
+		found := false
+		for i := range issues {
+			if issues[i].Key == m.recentlyCreated.Key {
+				found = true
+				break
+			}
+		}
+		if !found {
+			issues = append([]jira.Issue{m.recentlyCreated}, issues...)
+		} else {
+			m.recentlyCreated = jira.Issue{}
+		}
 	}
 	m.feedList(issues)
 	if m.view == panes.ViewMyTasks && m.cachePath != "" && m.accountID != "" {
