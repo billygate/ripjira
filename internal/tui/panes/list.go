@@ -871,9 +871,9 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
 		if budget := m.Width() - 1; budget > 4 && lipgloss.Width(title) > budget {
 			title = truncate(title, budget)
 		}
-		styled := d.styles.SectionHeader.Render(title)
+		styled := d.styles.SectionHeader.Width(m.Width()).Render(title)
 		if selected {
-			styled = d.styles.ListItemSelected.Render(title)
+			styled = d.styles.ListItemSelected.Width(m.Width()).Render(title)
 		}
 		_, _ = fmt.Fprint(w, styled)
 		return
@@ -889,9 +889,9 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
 		if budget := m.Width() - 1; budget > 4 && lipgloss.Width(line) > budget {
 			line = truncate(line, budget)
 		}
-		styled := d.styles.GroupHeader.Render(line)
+		styled := d.styles.GroupHeader.Width(m.Width()).Render(line)
 		if selected {
-			styled = d.styles.ListItemSelected.Render(line)
+			styled = d.styles.ListItemSelected.Width(m.Width()).Render(line)
 		}
 		_, _ = fmt.Fprint(w, styled)
 		return
@@ -910,9 +910,9 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
 	// ellipsis.
 	budget := max(m.Width()-lipgloss.Width(prefix)-1, 8)
 	line := prefix + truncate(it.Issue.Summary, budget)
-	styled := d.styles.ListItem.Render(line)
+	styled := d.styles.ListItem.Width(m.Width()).Render(line)
 	if selected {
-		styled = d.styles.ListItemSelected.Render(line)
+		styled = d.styles.ListItemSelected.Width(m.Width()).Render(line)
 	}
 	_, _ = fmt.Fprint(w, styled)
 }
