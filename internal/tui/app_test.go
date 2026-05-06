@@ -3,6 +3,7 @@ package tui
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -876,6 +877,36 @@ func TestCreateSubmitDone_SkipsEpicLinkForSubtask(t *testing.T) {
 	}
 	if !m.created.Visible() {
 		t.Error("subtask creation should show created popup directly")
+	}
+}
+
+// TestUpdate_RoutesDigitJumpTimeoutToList covers the regression where the
+// list pane scheduled a digitJumpTimeout via tea.Tick but the root Update
+// had no case for it — the message landed in the spinner default and was
+// silently eaten, so single-digit jumps on lists with ≥10 issues never
+// committed even after the timer.
+func TestUpdate_RoutesDigitJumpTimeoutToList(t *testing.T) {
+	m := newTestAppModel(t, 120, 30)
+	issues := make([]jira.Issue, 0, 12)
+	for i := 1; i <= 12; i++ {
+		issues = append(issues, jira.Issue{
+			Key: fmt.Sprintf("PROJ-%d", i), Summary: fmt.Sprintf("row %d", i),
+			Status: jira.Status{Name: "To Do", Category: "new"},
+		})
+	}
+	m.list.SetIssues(issues)
+	// Send '1' through the root model so the list buffers it as pending and
+	// returns the tea.Tick cmd. We don't sleep — we synthesise the timeout
+	// message ourselves to assert the routing wires it back to list.Update.
+	mi, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	m = mi.(Model)
+	if got := m.list.Selected(); got != nil && got.Key == "PROJ-1" {
+		t.Fatalf("digit jump committed without timeout — pending wait skipped")
+	}
+	mi, _ = m.Update(panes.DigitJumpTimeoutMsg{Gen: m.list.PendingDigitGen()})
+	m = mi.(Model)
+	if got := m.list.Selected(); got == nil || got.Key != "PROJ-1" {
+		t.Fatalf("after timeout: selected = %v, want PROJ-1", got)
 	}
 }
 
