@@ -257,11 +257,15 @@ func overlayCompose(bg, fg string, x, y int) string {
 	return strings.Join(bgLines, "\n")
 }
 
-func (m Model) paneDims() (listW, detailW, previewW, contentHeight int) {
-	topBar := m.renderTopBar()
-	tabBar := m.renderTabBar()
-	hintBar := m.renderHintBar()
-	overhead := lipgloss.Height(topBar) + lipgloss.Height(tabBar) + lipgloss.Height(hintBar)
+func (m *Model) paneDims() (listW, detailW, previewW, contentHeight int) {
+	if !m.chromeHeights.valid || m.chromeHeights.width != m.width {
+		m.chromeHeights.topBar = lipgloss.Height(m.renderTopBar())
+		m.chromeHeights.tabBar = lipgloss.Height(m.renderTabBar())
+		m.chromeHeights.hintBar = lipgloss.Height(m.renderHintBar())
+		m.chromeHeights.width = m.width
+		m.chromeHeights.valid = true
+	}
+	overhead := m.chromeHeights.topBar + m.chromeHeights.tabBar + m.chromeHeights.hintBar
 	if v := m.toasts.View(m.styles); v != "" {
 		overhead += lipgloss.Height(v)
 	}

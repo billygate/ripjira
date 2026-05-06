@@ -139,6 +139,22 @@ type Model struct {
 	// `]`/`[` returns to the user's previous scope rather than always landing
 	// on the first sub.
 	lastSubView map[panes.TopTabKind]panes.ViewKind
+
+	// chromeHeights caches the rendered height of the topBar / tabBar /
+	// hintBar so paneDims doesn't re-render them on every View() call.
+	// Filled lazily by paneDims and invalidated on width change.
+	chromeHeights chromeHeightCache
+}
+
+// chromeHeightCache memoises the per-frame heights of the three single-line
+// chrome bars. Toast height stays out — it's volatile (TTL-based) and cheap
+// to query directly.
+type chromeHeightCache struct {
+	valid   bool
+	width   int
+	topBar  int
+	tabBar  int
+	hintBar int
 }
 
 // New constructs a root Model bound to the given palette. Styles are derived
