@@ -11,7 +11,7 @@ type catppuccin struct{}
 // Catppuccin returns the Catppuccin Mocha palette.
 func Catppuccin() Palette { return catppuccin{} }
 
-func (catppuccin) Name() string { return "catppuccin" }
+func (catppuccin) Name() string { return "catppuccin-mocha" }
 
 func (catppuccin) Bg() lipgloss.Color      { return lipgloss.Color("#1e1e2e") }
 func (catppuccin) Fg() lipgloss.Color      { return lipgloss.Color("#cdd6f4") }
