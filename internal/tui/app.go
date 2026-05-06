@@ -87,6 +87,11 @@ type Model struct {
 	topGo         overlays.TopGo
 	created       overlays.Created
 
+	// createdPending holds the freshly-created issue while the wizard is in
+	// Step 4 (link to epic). On EpicPicked / EpicCancelled it is consumed:
+	// the post-create popup is shown and this is reset to the zero value.
+	createdPending jira.Issue
+
 	list   panes.List
 	detail panes.Detail
 
@@ -1113,9 +1118,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleEpicsLoaded(msg)
 	case overlays.EpicCancelledMsg:
 		m.epicPicker = m.epicPicker.Hide()
+		if m.createdPending.Key != "" {
+			issue := m.createdPending
+			m.createdPending = jira.Issue{}
+			m.created = m.created.Show(issue)
+		}
 		return m, nil
 	case overlays.EpicPickedMsg:
-		return m.handleEpicPicked(msg)
+		pendingMatches := m.createdPending.Key != "" && m.createdPending.Key == msg.IssueKey
+		mm, cmd := m.handleEpicPicked(msg)
+		m = mm.(Model)
+		if pendingMatches {
+			issue := m.createdPending
+			m.createdPending = jira.Issue{}
+			m.created = m.created.Show(issue)
+		}
+		return m, cmd
 	case setParentDoneMsg:
 		return m.handleSetParentDone(msg)
 	case overlays.WorklogDeletedMsg:
@@ -1216,6 +1234,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case overlays.CreateSubmitDoneMsg:
 		parent := m.create.ParentKey() // capture BEFORE Update potentially resets it
+		typeName := m.create.SelectedIssueType().Name
 		var cmd tea.Cmd
 		m.create, cmd = m.create.Update(msg)
 		if msg.Err == nil {
@@ -1237,6 +1256,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var refresh tea.Cmd
 			m, refresh = m.dispatchListRefresh()
 			if msg.Issue.Key != "" {
+				if m.shouldOfferEpicLink(parent, typeName) {
+					m.createdPending = msg.Issue
+					m.epicPicker = m.epicPicker.Show(msg.Issue.Key, "")
+					return m, tea.Batch(cmd, refresh, m.searchEpicsCmd(msg.Issue.Key))
+				}
 				m.created = m.created.Show(msg.Issue)
 			}
 			return m, tea.Batch(cmd, refresh)
@@ -1935,6 +1959,23 @@ func (m Model) handlePrioritySelected(msg overlays.PrioritySelectedMsg) (tea.Mod
 		Field:    overlays.EditPriority,
 		Value:    msg.Name,
 	})
+}
+
+// shouldOfferEpicLink reports whether the create wizard should advance to
+// Step 4 (link to epic) for the just-created issue. Skipped when:
+//   - subtask mode (parent is set; subtasks inherit their parent's epic);
+//   - the issue type itself is an Epic (linking an epic to an epic is not
+//     a meaningful flow in this client).
+func (m Model) shouldOfferEpicLink(parentKey, typeName string) bool {
+	if parentKey != "" {
+		return false
+	}
+	for _, t := range m.epicTypes {
+		if strings.EqualFold(t, typeName) {
+			return false
+		}
+	}
+	return true
 }
 
 // openEpicPicker opens the epic-link picker for the current issue and

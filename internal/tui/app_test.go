@@ -839,6 +839,61 @@ func TestCreateSubmitDone_AppendsSubtaskOptimistically(t *testing.T) {
 	}
 }
 
+func TestCreateSubmitDone_OffersEpicLinkForRegularIssue(t *testing.T) {
+	m := newTestModel(t)
+	m, _ = sendSize(m, 80, 24)
+	mi, _ := m.Update(overlays.CreateSubmitDoneMsg{
+		ProjectKey:  "PROJ",
+		IssueTypeID: "10100",
+		Issue:       jira.Issue{Key: "PROJ-200", URL: "https://j/PROJ-200"},
+	})
+	m = mi.(Model)
+	if !m.epicPicker.Visible() {
+		t.Fatal("epic picker should be visible after regular create")
+	}
+	if m.created.Visible() {
+		t.Error("created popup must not be shown until epic step resolves")
+	}
+	if m.createdPending.Key != "PROJ-200" {
+		t.Errorf("createdPending = %q, want PROJ-200", m.createdPending.Key)
+	}
+}
+
+func TestCreateSubmitDone_SkipsEpicLinkForSubtask(t *testing.T) {
+	m := newTestModel(t)
+	m, _ = sendSize(m, 80, 24)
+	parent := jira.Issue{Key: "PROJ-100"}
+	c, _ := m.create.ShowAsSubtask(parent, []jira.Project{{Key: "PROJ"}})
+	m.create = c
+	mi, _ := m.Update(overlays.CreateSubmitDoneMsg{
+		ProjectKey:  "PROJ",
+		IssueTypeID: "10103",
+		Issue:       jira.Issue{Key: "PROJ-201", URL: "https://j/PROJ-201"},
+	})
+	m = mi.(Model)
+	if m.epicPicker.Visible() {
+		t.Error("subtask creation must not open epic picker")
+	}
+	if !m.created.Visible() {
+		t.Error("subtask creation should show created popup directly")
+	}
+}
+
+func TestCreatedDismissed_SelectsIssueWhenInList(t *testing.T) {
+	m := newTestModel(t)
+	m, _ = sendSize(m, 80, 24)
+	m.list.SetIssues([]jira.Issue{
+		{Key: "PROJ-1", Summary: "first"},
+		{Key: "PROJ-2", Summary: "second"},
+	})
+	mi, _ := m.Update(overlays.CreatedDismissedMsg{Key: "PROJ-2"})
+	m = mi.(Model)
+	sel := m.list.Selected()
+	if sel == nil || sel.Key != "PROJ-2" {
+		t.Errorf("after dismiss selected = %+v, want PROJ-2", sel)
+	}
+}
+
 func TestCreate_LastProjectFromStateOverridesDefault(t *testing.T) {
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, "state.json")
