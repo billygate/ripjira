@@ -85,6 +85,7 @@ type Model struct {
 	structPicker  overlays.Structures
 	scopeEditor   overlays.ScopeEditor
 	topGo         overlays.TopGo
+	created       overlays.Created
 
 	list   panes.List
 	detail panes.Detail
@@ -155,7 +156,8 @@ func (m Model) canArmQuit() bool {
 		m.edit.Visible() || m.favorites.Visible() || m.link.Visible() ||
 		m.linkRemove.Visible() || m.worklog.Visible() || m.worklogRemove.Visible() ||
 		m.description.Visible() || m.priority.Visible() ||
-		m.epicPicker.Visible() || m.structPicker.Visible() || m.scopeEditor.Visible() || m.topGo.Visible() {
+		m.epicPicker.Visible() || m.structPicker.Visible() || m.scopeEditor.Visible() || m.topGo.Visible() ||
+		m.created.Visible() {
 		return false
 	}
 	if m.list.SearchEditing() || m.list.LocalFilterEditing() {
@@ -294,6 +296,7 @@ func New(p themes.Palette, opts ...Option) Model {
 		structPicker:  overlays.NewStructures(km.CloseOverlay),
 		scopeEditor:   overlays.NewScopeEditor(km.CloseOverlay),
 		topGo:         overlays.NewTopGo(km.CloseOverlay),
+		created:       overlays.NewCreated(km.CopyKey, km.CopyURL, km.Browser, km.CloseOverlay),
 		list:          panes.New(st, grouping.ByStatus{}, 1, 1),
 		detail:        panes.NewDetail(st, panesNoopLoader{}, 1, 1),
 		browser:       OSOpener{},
@@ -1233,9 +1236,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			var refresh tea.Cmd
 			m, refresh = m.dispatchListRefresh()
+			if msg.Issue.Key != "" {
+				m.created = m.created.Show(msg.Issue)
+			}
 			return m, tea.Batch(cmd, refresh)
 		}
 		return m, cmd
+	case overlays.CreatedDismissedMsg:
+		if msg.Key != "" {
+			m.list.SelectByKey(msg.Key)
+		}
+		return m, m.syncDetailFromList()
+	case overlays.CreatedCopyRequestedMsg:
+		text, label := msg.Text, msg.Label
+		return m, func() tea.Msg {
+			if err := copyToClipboard(nil, text); err != nil {
+				return ToastMsg{Text: "Copy failed: " + err.Error(), Level: ToastError}
+			}
+			return ToastMsg{Text: "Copied " + label + ": " + text, Level: ToastInfo}
+		}
+	case overlays.CreatedOpenRequestedMsg:
+		if m.browser == nil || msg.URL == "" {
+			return m, nil
+		}
+		url := msg.URL
+		opener := m.browser
+		return m, func() tea.Msg {
+			return browserOpenedMsg{URL: url, Err: opener.Open(url)}
+		}
 	case overlays.CreateCancelledMsg:
 		return m, nil
 	case overlays.OptionsAppliedMsg:
@@ -1410,6 +1438,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.scopeEditor.Visible() {
 		var cmd tea.Cmd
 		m.scopeEditor, cmd = m.scopeEditor.Update(msg)
+		return m, cmd
+	}
+	if m.created.Visible() {
+		var cmd tea.Cmd
+		m.created, cmd = m.created.Update(msg)
 		return m, cmd
 	}
 	if m.topGo.Visible() {
@@ -3087,6 +3120,9 @@ func (m Model) activeOverlay() string {
 		return v
 	}
 	if v := m.topGo.View(m.styles); v != "" {
+		return v
+	}
+	if v := m.created.View(m.styles); v != "" {
 		return v
 	}
 	return ""
