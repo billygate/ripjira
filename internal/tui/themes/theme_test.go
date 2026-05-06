@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-var allPalettes = []string{"tokyonight", "catppuccin", "gruvbox", "nord", "rosepine"}
+var allPalettes = []string{"tokyonight", "catppuccin-mocha", "gruvbox", "nord", "rosepine"}
 
 func TestByName_All(t *testing.T) {
 	for _, name := range allPalettes {
@@ -21,8 +21,18 @@ func TestByName_All(t *testing.T) {
 	}
 }
 
+func TestByName_CatppuccinAliasResolvesToMocha(t *testing.T) {
+	p, err := ByName("catppuccin")
+	if err != nil {
+		t.Fatalf("ByName(\"catppuccin\") error: %v", err)
+	}
+	if p.Name() != "catppuccin-mocha" {
+		t.Errorf("alias resolved to %q, want catppuccin-mocha", p.Name())
+	}
+}
+
 func TestByName_CaseInsensitive(t *testing.T) {
-	for _, name := range []string{"TokyoNight", "TOKYONIGHT", "  tokyonight  ", "Catppuccin", "GRUVBOX", "Nord", "RosePine"} {
+	for _, name := range []string{"TokyoNight", "TOKYONIGHT", "  tokyonight  ", "Catppuccin-Mocha", "Catppuccin", "GRUVBOX", "Nord", "RosePine"} {
 		if _, err := ByName(name); err != nil {
 			t.Errorf("ByName(%q) error: %v", name, err)
 		}

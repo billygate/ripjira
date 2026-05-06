@@ -39,11 +39,12 @@ type Palette interface {
 }
 
 var registry = map[string]func() Palette{
-	"tokyonight": func() Palette { return TokyoNight() },
-	"catppuccin": func() Palette { return Catppuccin() },
-	"gruvbox":    func() Palette { return Gruvbox() },
-	"nord":       func() Palette { return Nord() },
-	"rosepine":   func() Palette { return RosePine() },
+	"tokyonight":       func() Palette { return TokyoNight() },
+	"catppuccin-mocha": func() Palette { return Catppuccin() },
+	"catppuccin":       func() Palette { return Catppuccin() }, // alias, kept for older configs
+	"gruvbox":          func() Palette { return Gruvbox() },
+	"nord":             func() Palette { return Nord() },
+	"rosepine":         func() Palette { return RosePine() },
 }
 
 // ByName returns the registered palette with the given name. Lookup is

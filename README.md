@@ -166,7 +166,7 @@ hierarchy.
 Set `theme:` in `~/.config/ripjira/config.yaml` to any of:
 
 - `tokyonight` (default)
-- `catppuccin`
+- `catppuccin-mocha` (legacy alias: `catppuccin`)
 - `gruvbox`
 - `nord`
 - `rosepine`
