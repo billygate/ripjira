@@ -1,0 +1,111 @@
+package tui
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/billygate/ripjira/internal/jira"
+	"github.com/billygate/ripjira/internal/state"
+	"github.com/billygate/ripjira/internal/tui/themes"
+)
+
+// TestModel_LoadsCommentDraftsAtStartup asserts drafts written before
+// New(...) was called are visible via loadDraft without re-reading disk.
+// We corrupt the file mid-test to prove loadDraft uses the cache.
+func TestModel_LoadsCommentDraftsAtStartup(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	if err := state.Mutate(path, func(s *state.State) {
+		if s.CommentDrafts == nil {
+			s.CommentDrafts = map[string]string{}
+		}
+		s.CommentDrafts["PROJ-1"] = "in-progress comment"
+	}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+	p, err := themes.ByName("tokyonight")
+	if err != nil {
+		t.Fatalf("palette: %v", err)
+	}
+	m := New(p, WithStatePath(path))
+	if err := os.WriteFile(path, []byte("{not-json"), 0o600); err != nil {
+		t.Fatalf("corrupt state: %v", err)
+	}
+	if got := m.loadDraft("PROJ-1"); got != "in-progress comment" {
+		t.Fatalf("loadDraft = %q, want %q", got, "in-progress comment")
+	}
+}
+
+// TestSaveDraft_UpdatesCacheImmediately asserts saveDraft writes are
+// visible to the next loadDraft synchronously. No statePath so the
+// background goroutine doesn't race with t.TempDir cleanup.
+func TestSaveDraft_UpdatesCacheImmediately(t *testing.T) {
+	p, err := themes.ByName("tokyonight")
+	if err != nil {
+		t.Fatalf("palette: %v", err)
+	}
+	m := New(p)
+	m.saveDraft("PROJ-7", "fresh body")
+	if got := m.loadDraft("PROJ-7"); got != "fresh body" {
+		t.Fatalf("loadDraft after saveDraft = %q, want %q", got, "fresh body")
+	}
+}
+
+// TestModel_LoadsFavoritesAtStartup asserts favorites written before
+// New(...) was called are visible via loadFavoriteEntries without
+// re-reading disk.
+func TestModel_LoadsFavoritesAtStartup(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	if err := state.Mutate(path, func(s *state.State) {
+		s.Favorites = append(s.Favorites, state.Favorite{Name: "mine", JQL: "assignee = currentUser()"})
+	}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+	p, err := themes.ByName("tokyonight")
+	if err != nil {
+		t.Fatalf("palette: %v", err)
+	}
+	m := New(p, WithStatePath(path))
+	if err := os.WriteFile(path, []byte("{not-json"), 0o600); err != nil {
+		t.Fatalf("corrupt state: %v", err)
+	}
+	got := m.loadFavoriteEntries()
+	if len(got) != 1 || got[0].Name != "mine" || got[0].JQL != "assignee = currentUser()" {
+		t.Fatalf("loadFavoriteEntries = %+v, want one entry", got)
+	}
+}
+
+// TestCreateWizard_PreselectsLastProjectFromCache asserts the create
+// wizard preselects the cached LastProject without re-reading state.json.
+func TestCreateWizard_PreselectsLastProjectFromCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	if err := state.Mutate(path, func(s *state.State) { s.LastProject = "OPS" }); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	p, err := themes.ByName("tokyonight")
+	if err != nil {
+		t.Fatalf("palette: %v", err)
+	}
+	m := New(p, WithStatePath(path))
+	if err := os.WriteFile(path, []byte("{not-json"), 0o600); err != nil {
+		t.Fatalf("corrupt: %v", err)
+	}
+	mi, _ := m.Update(createProjectsLoadedMsg{Projects: []jira.Project{{Key: "OPS"}, {Key: "ENG"}}})
+	c := mi.(Model).Create()
+	projects := c.Projects()
+	cursor := c.ProjectCursor()
+	if cursor < 0 || cursor >= len(projects) || projects[cursor].Key != "OPS" {
+		t.Fatalf("preselect cursor = %d (key %v), want cursor on OPS",
+			cursor, projectKeyAt(projects, cursor))
+	}
+}
+
+func projectKeyAt(projects []jira.Project, i int) string {
+	if i < 0 || i >= len(projects) {
+		return ""
+	}
+	return projects[i].Key
+}

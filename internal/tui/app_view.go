@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -69,44 +70,54 @@ func seamFrameBg(s, bgSGR string) string {
 	}
 	var b strings.Builder
 	b.Grow(len(s) + 64)
-	runes := []rune(s)
 	resetPending := false
 	i := 0
-	for i < len(runes) {
-		r := runes[i]
-		if r == 0x1b && i+1 < len(runes) && runes[i+1] == '[' {
+	for i < len(s) {
+		// ASCII fast path: byte that isn't ESC or LF.
+		if c := s[i]; c < 0x80 && c != 0x1b && c != '\n' {
+			if resetPending {
+				b.WriteString(bgSGR)
+				resetPending = false
+			}
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		if s[i] == '\n' {
+			resetPending = false
+			b.WriteByte('\n')
+			i++
+			continue
+		}
+		if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '[' {
 			j := i + 2
-			for j < len(runes) {
-				c := runes[j]
-				if c >= 0x40 && c <= 0x7e && c != ';' {
+			for j < len(s) {
+				c := s[j]
+				if (c >= 0x40 && c <= 0x7e) && c != ';' {
 					break
 				}
 				j++
 			}
-			if j < len(runes) && runes[j] == 'm' {
-				params := string(runes[i+2 : j])
+			if j < len(s) && s[j] == 'm' {
+				params := s[i+2 : j]
 				if params == "" || params == "0" {
 					resetPending = true
 				} else if sgrSetsBg(params) {
 					resetPending = false
 				}
 			}
-			b.WriteString(string(runes[i : j+1]))
+			b.WriteString(s[i : j+1])
 			i = j + 1
 			continue
 		}
-		if r == '\n' {
-			resetPending = false
-			b.WriteRune(r)
-			i++
-			continue
-		}
+		// Multi-byte UTF-8 (or stray ESC without '['): decode, copy.
+		r, size := utf8.DecodeRuneInString(s[i:])
 		if resetPending {
 			b.WriteString(bgSGR)
 			resetPending = false
 		}
 		b.WriteRune(r)
-		i++
+		i += size
 	}
 	return b.String()
 }
@@ -257,11 +268,15 @@ func overlayCompose(bg, fg string, x, y int) string {
 	return strings.Join(bgLines, "\n")
 }
 
-func (m Model) paneDims() (listW, detailW, previewW, contentHeight int) {
-	topBar := m.renderTopBar()
-	tabBar := m.renderTabBar()
-	hintBar := m.renderHintBar()
-	overhead := lipgloss.Height(topBar) + lipgloss.Height(tabBar) + lipgloss.Height(hintBar)
+func (m *Model) paneDims() (listW, detailW, previewW, contentHeight int) {
+	if !m.chromeHeights.valid || m.chromeHeights.width != m.width {
+		m.chromeHeights.topBar = lipgloss.Height(m.renderTopBar())
+		m.chromeHeights.tabBar = lipgloss.Height(m.renderTabBar())
+		m.chromeHeights.hintBar = lipgloss.Height(m.renderHintBar())
+		m.chromeHeights.width = m.width
+		m.chromeHeights.valid = true
+	}
+	overhead := m.chromeHeights.topBar + m.chromeHeights.tabBar + m.chromeHeights.hintBar
 	if v := m.toasts.View(m.styles); v != "" {
 		overhead += lipgloss.Height(v)
 	}

@@ -59,21 +59,29 @@ func (m *Model) persistLastStructure(project, id string) {
 }
 
 // loadDraft returns the saved comment-in-progress for issueKey, or "".
+// Reads the in-memory cache populated at startup; never touches disk.
 func (m Model) loadDraft(issueKey string) string {
-	if m.statePath == "" || issueKey == "" {
+	if issueKey == "" {
 		return ""
 	}
-	st, err := state.Load(m.statePath)
-	if err != nil {
-		return ""
-	}
-	return st.CommentDrafts[issueKey]
+	return m.commentDrafts[issueKey]
 }
 
-// saveDraft persists a comment-in-progress to state.json under issueKey.
-// Empty bodies clear the draft. Write happens in a goroutine.
+// saveDraft updates the cached draft synchronously and persists to
+// state.json in the background. Empty bodies clear the draft.
 func (m Model) saveDraft(issueKey, body string) {
-	if m.statePath == "" || issueKey == "" {
+	if issueKey == "" {
+		return
+	}
+	if strings.TrimSpace(body) == "" {
+		delete(m.commentDrafts, issueKey)
+	} else {
+		if m.commentDrafts == nil {
+			m.commentDrafts = map[string]string{}
+		}
+		m.commentDrafts[issueKey] = body
+	}
+	if m.statePath == "" {
 		return
 	}
 	path := m.statePath
@@ -94,18 +102,11 @@ func (m Model) saveDraft(issueKey, body string) {
 // clearDraft drops the stored draft for issueKey.
 func (m Model) clearDraft(issueKey string) { m.saveDraft(issueKey, "") }
 
-// loadFavoriteEntries returns the saved favorites as overlay entries, or
-// an empty slice when state is unavailable.
+// loadFavoriteEntries returns the saved favorites as overlay entries.
+// Reads the in-memory cache populated at startup.
 func (m Model) loadFavoriteEntries() []overlays.FavoriteEntry {
-	if m.statePath == "" {
-		return nil
-	}
-	st, err := state.Load(m.statePath)
-	if err != nil {
-		return nil
-	}
-	out := make([]overlays.FavoriteEntry, 0, len(st.Favorites))
-	for _, f := range st.Favorites {
+	out := make([]overlays.FavoriteEntry, 0, len(m.favoritesCache))
+	for _, f := range m.favoritesCache {
 		out = append(out, overlays.FavoriteEntry{Name: f.Name, JQL: f.JQL})
 	}
 	return out

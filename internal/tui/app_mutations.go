@@ -490,52 +490,60 @@ func (m Model) handleFavoriteApplied(msg overlays.FavoriteAppliedMsg) (tea.Model
 // write happens in a goroutine via state.Mutate so the Update loop never
 // blocks on disk I/O.
 func (m Model) handleFavoriteSaved(msg overlays.FavoriteSavedMsg) (tea.Model, tea.Cmd) {
-	if m.statePath == "" {
-		return m, nil
-	}
-	path := m.statePath
 	name, jql := msg.Name, msg.JQL
-	go func() {
-		_ = state.Mutate(path, func(s *state.State) {
-			// Replace any existing entry with the same name so saving
-			// twice with the same name updates rather than duplicates.
-			for i := range s.Favorites {
-				if s.Favorites[i].Name == name {
-					s.Favorites[i].JQL = jql
-					return
-				}
+	// Update in-memory cache so the favorites overlay reflects the change
+	// without waiting on the background state.Mutate goroutine.
+	replaced := false
+	for i := range m.favoritesCache {
+		if m.favoritesCache[i].Name == name {
+			m.favoritesCache[i].JQL = jql
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		m.favoritesCache = append(m.favoritesCache, state.Favorite{Name: name, JQL: jql})
+	}
+	persist := persistAsync(m.statePath, "favorite", func(s *state.State) {
+		// Replace any existing entry with the same name so saving
+		// twice with the same name updates rather than duplicates.
+		for i := range s.Favorites {
+			if s.Favorites[i].Name == name {
+				s.Favorites[i].JQL = jql
+				return
 			}
-			s.Favorites = append(s.Favorites, state.Favorite{Name: name, JQL: jql})
-		})
-	}()
+		}
+		s.Favorites = append(s.Favorites, state.Favorite{Name: name, JQL: jql})
+	})
 	toast := func() tea.Msg {
 		return ToastMsg{Text: "Saved favorite: " + name, Level: ToastInfo}
 	}
-	return m, toast
+	return m, tea.Batch(persist, toast)
 }
 
 // handleFavoriteDeleted persists the removal to state.json.
 func (m Model) handleFavoriteDeleted(msg overlays.FavoriteDeletedMsg) (tea.Model, tea.Cmd) {
-	if m.statePath == "" {
-		return m, nil
-	}
-	path := m.statePath
 	name := msg.Name
-	go func() {
-		_ = state.Mutate(path, func(s *state.State) {
-			out := s.Favorites[:0]
-			for _, f := range s.Favorites {
-				if f.Name != name {
-					out = append(out, f)
-				}
+	out := m.favoritesCache[:0]
+	for _, f := range m.favoritesCache {
+		if f.Name != name {
+			out = append(out, f)
+		}
+	}
+	m.favoritesCache = out
+	persist := persistAsync(m.statePath, "favorite", func(s *state.State) {
+		out := s.Favorites[:0]
+		for _, f := range s.Favorites {
+			if f.Name != name {
+				out = append(out, f)
 			}
-			s.Favorites = out
-		})
-	}()
+		}
+		s.Favorites = out
+	})
 	toast := func() tea.Msg {
 		return ToastMsg{Text: "Deleted favorite: " + name, Level: ToastInfo}
 	}
-	return m, toast
+	return m, tea.Batch(persist, toast)
 }
 
 // handleEditSubmitted applies an optimistic update for the chosen field

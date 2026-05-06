@@ -127,6 +127,7 @@ type Model struct {
 	recentlyCreated jira.Issue
 
 	prefetchCancel context.CancelFunc
+	prefetchDone   chan struct{}
 
 	pendingQuitUntil time.Time
 
@@ -139,6 +140,37 @@ type Model struct {
 	// `]`/`[` returns to the user's previous scope rather than always landing
 	// on the first sub.
 	lastSubView map[panes.TopTabKind]panes.ViewKind
+
+	// chromeHeights caches the rendered height of the topBar / tabBar /
+	// hintBar so paneDims doesn't re-render them on every View() call.
+	// Filled lazily by paneDims and invalidated on width change.
+	chromeHeights chromeHeightCache
+
+	// commentDrafts mirrors state.CommentDrafts loaded once at startup so
+	// loadDraft is a map lookup, not sync disk I/O on the main goroutine.
+	// saveDraft updates this map and persists to disk in the background.
+	commentDrafts map[string]string
+
+	// favoritesCache mirrors state.Favorites loaded once at startup. The
+	// favorites overlay reads from here; favorite-write handlers update
+	// it alongside firing the background state.Mutate.
+	favoritesCache []state.Favorite
+
+	// lastProject is the persisted last-used create-wizard project key.
+	// Loaded once at startup; written via state.Mutate after every
+	// successful create.
+	lastProject string
+}
+
+// chromeHeightCache memoises the per-frame heights of the three single-line
+// chrome bars. Toast height stays out — it's volatile (TTL-based) and cheap
+// to query directly.
+type chromeHeightCache struct {
+	valid   bool
+	width   int
+	topBar  int
+	tabBar  int
+	hintBar int
 }
 
 // New constructs a root Model bound to the given palette. Styles are derived
@@ -193,6 +225,7 @@ func New(p themes.Palette, opts ...Option) Model {
 	m.currentStructID = map[string]string{}
 	m.loadedStructs = map[string][]structure.Structure{}
 	m.lastSubView = map[panes.TopTabKind]panes.ViewKind{}
+	m.commentDrafts = map[string]string{}
 	if m.statePath != "" {
 		if st, err := state.Load(m.statePath); err == nil {
 			if st.Grouping != "" {
@@ -208,6 +241,11 @@ func New(p themes.Palette, opts ...Option) Model {
 			}
 			m.list.SetSort(grouping.SortByName(sortName), desc)
 			m.recentKeys = append([]string(nil), st.RecentlyViewed...)
+			m.favoritesCache = append([]state.Favorite(nil), st.Favorites...)
+			m.lastProject = st.LastProject
+			for k, v := range st.CommentDrafts {
+				m.commentDrafts[k] = v
+			}
 			for k, v := range st.LastStructure {
 				m.currentStructID[k] = v
 			}
@@ -553,10 +591,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, toast
 		}
 		preselect := m.defaultProject
-		if m.statePath != "" {
-			if st, err := state.Load(m.statePath); err == nil && st.LastProject != "" {
-				preselect = st.LastProject
-			}
+		if m.lastProject != "" {
+			preselect = m.lastProject
 		}
 		c, cmd := m.create.Show(msg.Projects, preselect)
 		m.create = c
@@ -637,12 +673,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.detail.AppendSubtask(parent, sub)
 			}
-			if m.statePath != "" && msg.ProjectKey != "" {
-				path := m.statePath
+			var persistLast tea.Cmd
+			if msg.ProjectKey != "" {
+				m.lastProject = msg.ProjectKey
 				pk := msg.ProjectKey
-				go func() {
-					_ = state.Mutate(path, func(s *state.State) { s.LastProject = pk })
-				}()
+				persistLast = persistAsync(m.statePath, "last project", func(s *state.State) {
+					s.LastProject = pk
+				})
 			}
 			if msg.Issue.Key != "" && parent == "" {
 				m.list.PrependIssue(msg.Issue)
@@ -654,11 +691,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.shouldOfferEpicLink(parent, typeName) {
 					m.createdPending = msg.Issue
 					m.epicPicker = m.epicPicker.Show(msg.Issue.Key, "")
-					return m, tea.Batch(cmd, refresh, m.searchEpicsCmd(msg.Issue.Key))
+					return m, tea.Batch(cmd, refresh, persistLast, m.searchEpicsCmd(msg.Issue.Key))
 				}
 				m.created = m.created.Show(msg.Issue)
 			}
-			return m, tea.Batch(cmd, refresh)
+			return m, tea.Batch(cmd, refresh, persistLast)
 		}
 		return m, cmd
 	case overlays.CreatedDismissedMsg:
@@ -688,19 +725,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case overlays.OptionsAppliedMsg:
 		m.list.SetStrategy(grouping.ByName(msg.Grouping, m.epicTypes))
 		m.list.SetSort(grouping.SortByName(msg.Sort), msg.Desc)
-		if m.statePath != "" {
-			path := m.statePath
-			grp, srt, desc := msg.Grouping, msg.Sort, msg.Desc
-			go func() {
-				_ = state.Mutate(path, func(s *state.State) {
-					s.Grouping = grp
-					s.Sort = srt
-					d := desc
-					s.SortDesc = &d
-				})
-			}()
-		}
-		return m, m.syncDetailFromList()
+		grp, srt, desc := msg.Grouping, msg.Sort, msg.Desc
+		persist := persistAsync(m.statePath, "options", func(s *state.State) {
+			s.Grouping = grp
+			s.Sort = srt
+			d := desc
+			s.SortDesc = &d
+		})
+		return m, tea.Batch(persist, m.syncDetailFromList())
 	case overlays.OptionsCancelledMsg:
 		return m, nil
 	case assignSearchDoneMsg:
