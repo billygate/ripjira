@@ -7,6 +7,9 @@ linters:
     - govet
     - revive
     - staticcheck
+  exclusions:
+    presets:
+      - comments
 
 formatters:
   enable:

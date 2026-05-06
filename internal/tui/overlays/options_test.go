@@ -73,9 +73,7 @@ func TestOptions_TabSwitchesSection(t *testing.T) {
 	o, _ = o.Update(tea.KeyMsg{Type: tea.KeyTab})
 	// first section is Grouping (0); after tab move to Sorting (1)
 	o2, _ := o.Update(tea.KeyMsg{Type: tea.KeyDown})
-	if o2.SortName() == "priority" && o.SortName() != "priority" {
-		// unreachable with current impl — keep as defensive sentinel
-	}
+	_ = o2.SortName() // exercise getter; concrete check follows.
 	// Concrete check: after Tab, Down should move the sort cursor.
 	if o2.SortName() == "priority" {
 		t.Fatalf("after Tab+Down, SortName should have advanced; got %q", o2.SortName())

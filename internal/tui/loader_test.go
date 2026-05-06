@@ -40,24 +40,24 @@ func (s *stubJiraClient) GetTransitions(context.Context, string) ([]jira.Transit
 func (s *stubJiraClient) DownloadAttachment(context.Context, string, int64) ([]byte, string, error) {
 	return nil, "", nil
 }
-func (s *stubJiraClient) DoTransition(context.Context, string, string) error       { return nil }
-func (s *stubJiraClient) AddComment(context.Context, string, string) error         { return nil }
-func (s *stubJiraClient) SearchUsers(context.Context, string) ([]jira.User, error) { return nil, nil }
-func (s *stubJiraClient) AssignIssue(context.Context, string, string) error        { return nil }
+func (s *stubJiraClient) DoTransition(context.Context, string, string) error        { return nil }
+func (s *stubJiraClient) AddComment(context.Context, string, string) error          { return nil }
+func (s *stubJiraClient) SearchUsers(context.Context, string) ([]jira.User, error)  { return nil, nil }
+func (s *stubJiraClient) AssignIssue(context.Context, string, string) error         { return nil }
 func (s *stubJiraClient) UpdateIssue(context.Context, string, map[string]any) error { return nil }
 func (s *stubJiraClient) UpdateDescription(context.Context, string, string) error   { return nil }
 func (s *stubJiraClient) CreateIssueLink(context.Context, string, string, string) error {
 	return nil
 }
-func (s *stubJiraClient) DeleteIssueLink(context.Context, string) error { return nil }
+func (s *stubJiraClient) DeleteIssueLink(context.Context, string) error       { return nil }
 func (s *stubJiraClient) AddWatcher(context.Context, string, string) error    { return nil }
 func (s *stubJiraClient) RemoveWatcher(context.Context, string, string) error { return nil }
 func (s *stubJiraClient) AddWorklog(context.Context, string, string, string) error {
 	return nil
 }
 func (s *stubJiraClient) DeleteWorklog(context.Context, string, string) error { return nil }
-func (s *stubJiraClient) Myself(context.Context) (jira.User, error)                { return jira.User{}, nil }
-func (s *stubJiraClient) Projects(context.Context) ([]jira.Project, error)         { return nil, nil }
+func (s *stubJiraClient) Myself(context.Context) (jira.User, error)           { return jira.User{}, nil }
+func (s *stubJiraClient) Projects(context.Context) ([]jira.Project, error)    { return nil, nil }
 func (s *stubJiraClient) IssueTypesForProject(context.Context, string) ([]jira.IssueType, error) {
 	return nil, nil
 }

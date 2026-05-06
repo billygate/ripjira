@@ -14,11 +14,11 @@ import (
 
 // Config holds user-facing settings persisted to ~/.config/ripjira/config.yaml.
 type Config struct {
-	BaseURL            string `yaml:"base_url"`
-	Email              string `yaml:"email"`
-	DefaultProject     string `yaml:"default_project,omitempty"`
-	DefaultGrouping    string `yaml:"default_grouping"`
-	AutoRefreshSeconds int    `yaml:"auto_refresh_seconds"`
+	BaseURL            string   `yaml:"base_url"`
+	Email              string   `yaml:"email"`
+	DefaultProject     string   `yaml:"default_project,omitempty"`
+	DefaultGrouping    string   `yaml:"default_grouping"`
+	AutoRefreshSeconds int      `yaml:"auto_refresh_seconds"`
 	Theme              string   `yaml:"theme"`
 	Icons              string   `yaml:"icons"`
 	EpicIssueTypes     []string `yaml:"epic_issue_types,omitempty"`
@@ -59,7 +59,7 @@ var (
 		GroupingEpic:     true,
 		GroupingParent:   true,
 	}
-	validThemes    = map[string]bool{
+	validThemes = map[string]bool{
 		ThemeTokyoNight: true,
 		ThemeCatppuccin: true,
 		ThemeGruvbox:    true,

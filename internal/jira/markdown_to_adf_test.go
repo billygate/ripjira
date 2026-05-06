@@ -115,7 +115,7 @@ func TestMarkdownToADF_InlineMarks(t *testing.T) {
 		for _, m := range nodes[i].Marks {
 			gotMarks = append(gotMarks, m.Type)
 		}
-		if !reflect.DeepEqual(gotMarks, w.marks) && !(len(gotMarks) == 0 && w.marks == nil) {
+		if !reflect.DeepEqual(gotMarks, w.marks) && (len(gotMarks) != 0 || w.marks != nil) {
 			t.Errorf("node %d marks = %v, want %v", i, gotMarks, w.marks)
 		}
 	}

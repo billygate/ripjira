@@ -246,10 +246,10 @@ func TestField_PayloadValue_Shapes(t *testing.T) {
 	form := BuildForm(sampleMeta(), FormDefaults{})
 
 	// Fill in all kinds with valid values.
-	form.Fields[0] = form.Fields[0].SetValue("Title")     // string
-	form.Fields[1] = form.Fields[1].SetValue("Body text") // adf
-	form.Fields[2] = form.Fields[2].SetValue("2")         // option (priority id)
-	form.Fields[3].SetUserSelection(jira.User{AccountID: "acct-1", DisplayName: "Test User"})  // user
+	form.Fields[0] = form.Fields[0].SetValue("Title")                                         // string
+	form.Fields[1] = form.Fields[1].SetValue("Body text")                                     // adf
+	form.Fields[2] = form.Fields[2].SetValue("2")                                             // option (priority id)
+	form.Fields[3].SetUserSelection(jira.User{AccountID: "acct-1", DisplayName: "Test User"}) // user
 	// components: select id 11
 	form.Fields[4] = form.Fields[4].SetValue("11")
 	form.Fields[5] = form.Fields[5].SetValue("4.25")

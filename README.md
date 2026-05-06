@@ -103,9 +103,12 @@ ripjira login --reset   # delete the stored token first, then re-run
 | `n`                | create a new issue                    |
 | `S`                | create a subtask of the current issue |
 | `o`                | open current issue in your browser    |
+| `y`                | copy issue key to clipboard (OSC 52)  |
+| `Y`                | copy issue URL to clipboard (OSC 52)  |
 | `r`                | force refresh                         |
 | `\`                | pick a structure (Structures tab)     |
-| `e`                | edit structures YAML in $EDITOR       |
+| `e` (in picker)    | edit scope of highlighted structure   |
+| `e` (main view)    | edit structures YAML in $EDITOR       |
 | `?`                | show full help overlay                |
 | `esc`              | close overlay (or arm quit)           |
 | `q`, `ctrl+c`      | quit                                  |

@@ -70,3 +70,44 @@ func TestApply_DropsEmptySections(t *testing.T) {
 		t.Fatalf("expected only section B, got %#v", out)
 	}
 }
+
+func TestApply_ScopeAndsAcrossSections(t *testing.T) {
+	issues := []Issue{
+		fakeIssue{"labels": "Q12026", "status": "Open"},
+		fakeIssue{"labels": "Other", "status": "Open"},
+		fakeIssue{"labels": "Q22026", "status": "Done"},
+	}
+	s := &Structure{
+		Scope: SectionFilter{"labels": {In: []string{"Q12026", "Q22026"}}},
+		Sections: []Section{
+			{Title: "Open", Filter: SectionFilter{"status": In("Open")}},
+			{Title: "Done", Filter: SectionFilter{"status": In("Done")}},
+		},
+	}
+	got := Apply(issues, s)
+	if len(got) != 2 {
+		t.Fatalf("want 2 sections, got %d", len(got))
+	}
+	if len(got[0].Issues) != 1 || got[0].Issues[0].Field("labels") != "Q12026" {
+		t.Fatalf("Open section did not honor scope: %+v", got[0].Issues)
+	}
+	if len(got[1].Issues) != 1 || got[1].Issues[0].Field("labels") != "Q22026" {
+		t.Fatalf("Done section did not honor scope: %+v", got[1].Issues)
+	}
+}
+
+func TestApply_EmptyScopeIsNoop(t *testing.T) {
+	issues := []Issue{
+		fakeIssue{"status": "Open"},
+		fakeIssue{"status": "Done"},
+	}
+	s := &Structure{
+		Sections: []Section{
+			{Title: "All", Filter: nil},
+		},
+	}
+	got := Apply(issues, s)
+	if len(got) != 1 || len(got[0].Issues) != 2 {
+		t.Fatalf("empty scope altered output: %+v", got)
+	}
+}

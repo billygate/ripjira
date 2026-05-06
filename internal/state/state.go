@@ -20,10 +20,10 @@ var mu sync.Mutex
 
 // State is the on-disk shape. Future fields go here.
 type State struct {
-	LastProject string     `json:"lastProject,omitempty"`
-	Grouping    string     `json:"grouping,omitempty"`
-	Sort        string     `json:"sort,omitempty"`
-	SortDesc    *bool      `json:"sortDesc,omitempty"`
+	LastProject    string            `json:"lastProject,omitempty"`
+	Grouping       string            `json:"grouping,omitempty"`
+	Sort           string            `json:"sort,omitempty"`
+	SortDesc       *bool             `json:"sortDesc,omitempty"`
 	Favorites      []Favorite        `json:"favorites,omitempty"`
 	RecentlyViewed []string          `json:"recentlyViewed,omitempty"`
 	CommentDrafts  map[string]string `json:"commentDrafts,omitempty"`

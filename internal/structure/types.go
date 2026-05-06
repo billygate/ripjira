@@ -114,6 +114,8 @@ type SortField string
 // SortDir is asc/desc.
 type SortDir string
 
+// Whitelisted SortField values, SortDir directions, and the max number
+// of OrderBy tiers a Section may declare.
 const (
 	SortFieldPriority SortField = "priority"
 	SortFieldUpdated  SortField = "updated"
@@ -137,13 +139,14 @@ type SortKey struct {
 // Source is set to "pilot" (or any non-empty value) by sync tooling to mark
 // the structure read-only in the UI. Local user structures leave it empty.
 type Structure struct {
-	ID         string    `json:"id" yaml:"id"`
-	ProjectKey string    `json:"project_key" yaml:"project_key,omitempty"`
-	Name       string    `json:"name" yaml:"name"`
-	Sections   []Section `json:"sections" yaml:"sections"`
-	Source     string    `json:"source,omitempty" yaml:"source,omitempty"`
-	CreatedAt  time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	UpdatedAt  time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	ID         string        `json:"id" yaml:"id"`
+	ProjectKey string        `json:"project_key" yaml:"project_key,omitempty"`
+	Name       string        `json:"name" yaml:"name"`
+	Sections   []Section     `json:"sections" yaml:"sections"`
+	Scope      SectionFilter `json:"scope,omitempty" yaml:"scope,omitempty"`
+	Source     string        `json:"source,omitempty" yaml:"source,omitempty"`
+	CreatedAt  time.Time     `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	UpdatedAt  time.Time     `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 }
 
 // IsReadOnly returns true when the structure originates from an external

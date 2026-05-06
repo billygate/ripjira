@@ -15,7 +15,7 @@ import (
 // stale-by-up-to-a-minute is the trade for instant back-and-forth navigation
 // between recently viewed issues.
 const (
-	DefaultDetailCacheSize = 64
+	DefaultDetailCacheSize = 128
 	DefaultDetailCacheTTL  = 15 * time.Minute
 	// DefaultPrefetchConcurrency is the number of in-flight prefetch
 	// LoadIssue calls. Jira's per-tenant rate limits make 2 a safe default
@@ -264,12 +264,12 @@ type lruEntry[V any] struct {
 	exp time.Time
 }
 
-func newLRU[V any](cap int, ttl time.Duration, now func() time.Time) *lru[V] {
+func newLRU[V any](capacity int, ttl time.Duration, now func() time.Time) *lru[V] {
 	if now == nil {
 		now = time.Now
 	}
 	return &lru[V]{
-		cap:   cap,
+		cap:   capacity,
 		ttl:   ttl,
 		ll:    list.New(),
 		items: make(map[string]*list.Element),

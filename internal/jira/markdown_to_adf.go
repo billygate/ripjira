@@ -9,7 +9,7 @@ import (
 // document. Supported block constructs: paragraphs, ATX headings (`#` to
 // `######`), fenced code blocks (```), unordered lists (`-` / `*`),
 // ordered lists (`1.`). Inline marks supported: `**strong**`, `*em*` /
-// `_em_`, `` `code` ``, `[text](url)`. Unrecognised constructs fall
+// `_em_`, “ `code` “, `[text](url)`. Unrecognised constructs fall
 // through as plain text — round-tripping is not perfect, but the common
 // shapes survive submit→fetch.
 //

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -64,24 +65,25 @@ type Model struct {
 	height     int
 	statusText string
 
-	toasts     Toasts
-	spinner    Spinner
-	help       overlays.Help
-	transition overlays.Transition
-	comment    overlays.Comment
-	assign     overlays.Assign
-	create     overlays.Create
-	options    overlays.Options
-	edit       overlays.Edit
-	favorites  overlays.Favorites
-	link        overlays.Link
-	linkRemove  overlays.RemoveLink
+	toasts        Toasts
+	spinner       Spinner
+	help          overlays.Help
+	transition    overlays.Transition
+	comment       overlays.Comment
+	assign        overlays.Assign
+	create        overlays.Create
+	options       overlays.Options
+	edit          overlays.Edit
+	favorites     overlays.Favorites
+	link          overlays.Link
+	linkRemove    overlays.RemoveLink
 	worklog       overlays.Worklog
 	worklogRemove overlays.RemoveWorklog
 	description   overlays.Description
 	priority      overlays.Priority
 	epicPicker    overlays.Epic
 	structPicker  overlays.Structures
+	scopeEditor   overlays.ScopeEditor
 	topGo         overlays.TopGo
 
 	list   panes.List
@@ -153,7 +155,7 @@ func (m Model) canArmQuit() bool {
 		m.edit.Visible() || m.favorites.Visible() || m.link.Visible() ||
 		m.linkRemove.Visible() || m.worklog.Visible() || m.worklogRemove.Visible() ||
 		m.description.Visible() || m.priority.Visible() ||
-		m.epicPicker.Visible() || m.structPicker.Visible() || m.topGo.Visible() {
+		m.epicPicker.Visible() || m.structPicker.Visible() || m.scopeEditor.Visible() || m.topGo.Visible() {
 		return false
 	}
 	if m.list.SearchEditing() || m.list.LocalFilterEditing() {
@@ -268,32 +270,33 @@ func New(p themes.Palette, opts ...Option) Model {
 	km := DefaultKeymap()
 	st := styles.New(p)
 	m := Model{
-		keymap:     km,
-		palette:    p,
-		styles:     st,
-		focus:      FocusList,
-		toasts:     NewToasts(),
-		spinner:    NewSpinner(),
-		help:       overlays.NewHelp(buildHelpColumns(km), km.CloseOverlay),
-		transition: overlays.NewTransition(km.CloseOverlay),
-		comment:    overlays.NewComment(km.CloseOverlay),
-		assign:     overlays.NewAssign(km.CloseOverlay, overlays.DefaultAssignDebounce),
-		create:     overlays.NewCreate(km.CloseOverlay, ""),
-		options:    overlays.NewOptions(km.CloseOverlay, "status", "priority", false),
-		edit:       overlays.NewEdit(km.CloseOverlay),
-		favorites:  overlays.NewFavorites(km.CloseOverlay),
-		link:       overlays.NewLink(km.CloseOverlay),
-		linkRemove:  overlays.NewRemoveLink(km.CloseOverlay),
+		keymap:        km,
+		palette:       p,
+		styles:        st,
+		focus:         FocusList,
+		toasts:        NewToasts(),
+		spinner:       NewSpinner(),
+		help:          overlays.NewHelp(buildHelpColumns(km), km.CloseOverlay),
+		transition:    overlays.NewTransition(km.CloseOverlay),
+		comment:       overlays.NewComment(km.CloseOverlay),
+		assign:        overlays.NewAssign(km.CloseOverlay, overlays.DefaultAssignDebounce),
+		create:        overlays.NewCreate(km.CloseOverlay, ""),
+		options:       overlays.NewOptions(km.CloseOverlay, "status", "priority", false),
+		edit:          overlays.NewEdit(km.CloseOverlay),
+		favorites:     overlays.NewFavorites(km.CloseOverlay),
+		link:          overlays.NewLink(km.CloseOverlay),
+		linkRemove:    overlays.NewRemoveLink(km.CloseOverlay),
 		worklog:       overlays.NewWorklog(km.CloseOverlay),
 		worklogRemove: overlays.NewRemoveWorklog(km.CloseOverlay),
 		description:   overlays.NewDescription(km.CloseOverlay),
-		priority:    overlays.NewPriority(km.CloseOverlay),
-		epicPicker:   overlays.NewEpic(),
-		structPicker: overlays.NewStructures(km.CloseOverlay),
-		topGo:        overlays.NewTopGo(km.CloseOverlay),
-		list:       panes.New(st, grouping.ByStatus{}, 1, 1),
-		detail:     panes.NewDetail(st, panesNoopLoader{}, 1, 1),
-		browser:    OSOpener{},
+		priority:      overlays.NewPriority(km.CloseOverlay),
+		epicPicker:    overlays.NewEpic(),
+		structPicker:  overlays.NewStructures(km.CloseOverlay),
+		scopeEditor:   overlays.NewScopeEditor(km.CloseOverlay),
+		topGo:         overlays.NewTopGo(km.CloseOverlay),
+		list:          panes.New(st, grouping.ByStatus{}, 1, 1),
+		detail:        panes.NewDetail(st, panesNoopLoader{}, 1, 1),
+		browser:       OSOpener{},
 	}
 	for _, o := range opts {
 		o(&m)
@@ -658,11 +661,11 @@ func (m *Model) feedList(issues []jira.Issue) {
 	applied := structure.Apply(adapters, &st)
 	secs := make([]panes.Section, 0, len(applied))
 	for _, a := range applied {
-		real := make([]jira.Issue, len(a.Issues))
+		raw := make([]jira.Issue, len(a.Issues))
 		for i, x := range a.Issues {
-			real[i] = x.(structureadapter.Adapter).Issue()
+			raw[i] = x.(structureadapter.Adapter).Issue()
 		}
-		section := panes.Section{Title: a.Title, ReadOnly: st.IsReadOnly(), Issues: real}
+		section := panes.Section{Title: a.Title, ReadOnly: st.IsReadOnly(), Issues: raw}
 		if len(a.GroupBy) > 0 {
 			tree := structure.GroupTree(a.Issues, a.GroupBy, "", 0)
 			section.Tree = treeToSectionNodes(tree)
@@ -836,7 +839,6 @@ func (m Model) openStructurePicker() (tea.Model, tea.Cmd) {
 	m.structPicker = m.structPicker.Show(entries, selID)
 	return m, nil
 }
-
 
 // persistLastView writes the currently active ViewKind to state.json so
 // the next session boots into the user's last view instead of MyTasks.
@@ -1040,6 +1042,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.feedList(m.list.Issues())
 		return m, nil
+	case overlays.StructureEditScopeMsg:
+		return m.handleEditScope(msg.ID)
+	case overlays.StructureReadOnlyMsg:
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "structure is read-only", Level: ToastInfo}
+		}
+	case overlays.ScopeSavedMsg:
+		return m.handleScopeSaved(msg)
 	case accountIDFetchedMsg:
 		stopSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: -1} }
 		if msg.Err != nil {
@@ -1395,6 +1405,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.structPicker.Visible() {
 		var cmd tea.Cmd
 		m.structPicker, cmd = m.structPicker.Update(msg)
+		return m, cmd
+	}
+	if m.scopeEditor.Visible() {
+		var cmd tea.Cmd
+		m.scopeEditor, cmd = m.scopeEditor.Update(msg)
 		return m, cmd
 	}
 	if m.topGo.Visible() {
@@ -2947,21 +2962,34 @@ func prefetchTick() tea.Cmd {
 	})
 }
 
+// issueKeyInGroupRe extracts a Jira-style key (e.g. BILLING-10118) from a
+// group header label so cursor-on-epic-header can preview the epic itself.
+var issueKeyInGroupRe = regexp.MustCompile(`[A-Z][A-Z0-9_]*-\d+`)
+
 // syncDetailFromList mirrors the list's current selection into the detail
 // pane. When the selection is unchanged it is a no-op; when it changes (or
 // flips between issue and group header) the detail pane is told to load a
 // new issue (or clear) and the resulting batch of load commands is
-// returned.
+// returned. When the cursor sits on a group header whose key looks like a
+// Jira issue key (epic / parent grouping), the matching issue is loaded so
+// the right pane previews the epic.
 func (m *Model) syncDetailFromList() tea.Cmd {
 	cur := ""
+	var target *jira.Issue
 	if sel := m.list.Selected(); sel != nil {
 		cur = sel.Key
+		target = sel
+	} else if gk := m.list.SelectedGroupKey(); gk != "" {
+		if k := issueKeyInGroupRe.FindString(gk); k != "" {
+			cur = k
+			target = &jira.Issue{Key: k}
+		}
 	}
 	if cur == m.selectedKey {
 		return nil
 	}
 	m.selectedKey = cur
-	return m.detail.SetIssue(m.list.Selected())
+	return m.detail.SetIssue(target)
 }
 
 // View implements tea.Model.
@@ -3053,6 +3081,9 @@ func (m Model) activeOverlay() string {
 		return v
 	}
 	if v := m.structPicker.View(m.styles); v != "" {
+		return v
+	}
+	if v := m.scopeEditor.View(m.styles); v != "" {
 		return v
 	}
 	if v := m.topGo.View(m.styles); v != "" {
@@ -3439,6 +3470,61 @@ func (panesNoopLoader) LoadTransitions(context.Context, string) ([]jira.Transiti
 }
 func (panesNoopLoader) LoadAttachment(context.Context, string) ([]byte, string, error) {
 	return nil, "", nil
+}
+
+// handleEditScope opens the visual scope editor for the structure with the
+// given id. Falls back to a toast on read-only structures or load errors.
+func (m Model) handleEditScope(id string) (tea.Model, tea.Cmd) {
+	pk := m.defaultProject
+	if pk == "" || m.structures == nil {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "structures: store unavailable", Level: ToastError}
+		}
+	}
+	str, err := m.structures.FindByID(pk, id)
+	if err != nil {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "structures: " + err.Error(), Level: ToastError}
+		}
+	}
+	if str.IsReadOnly() {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "structure is read-only", Level: ToastInfo}
+		}
+	}
+	rows := structureadapter.RowsFromFilter(str.Scope)
+	issues := m.list.Issues()
+	provider := func(field string) []string { return UniqueValues(issues, field) }
+	m.scopeEditor = m.scopeEditor.ShowWithID(str.ID, str.Name, rows, provider)
+	return m, nil
+}
+
+// handleScopeSaved persists the new scope to disk via the structure store
+// and re-applies the active structure so the list reflects the change.
+func (m Model) handleScopeSaved(msg overlays.ScopeSavedMsg) (tea.Model, tea.Cmd) {
+	pk := m.defaultProject
+	if pk == "" || m.structures == nil {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "structures: store unavailable", Level: ToastError}
+		}
+	}
+	str, err := m.structures.FindByID(pk, msg.StructureID)
+	if err != nil {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "scope save: " + err.Error(), Level: ToastError}
+		}
+	}
+	str.Scope = structureadapter.FilterFromRows(msg.Rows)
+	if err := m.structures.SaveStructure(&str); err != nil {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "scope save: " + err.Error(), Level: ToastError}
+		}
+	}
+	delete(m.loadedStructs, pk)
+	m.feedList(m.list.Issues())
+	return m, func() tea.Msg {
+		return ToastMsg{Text: "scope saved", Level: ToastInfo}
+	}
 }
 
 // defaultDescFor returns the user-friendly default direction for a sort
