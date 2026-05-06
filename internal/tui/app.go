@@ -673,15 +673,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.detail.AppendSubtask(parent, sub)
 			}
+			var persistLast tea.Cmd
 			if msg.ProjectKey != "" {
 				m.lastProject = msg.ProjectKey
-				if m.statePath != "" {
-					path := m.statePath
-					pk := msg.ProjectKey
-					go func() {
-						_ = state.Mutate(path, func(s *state.State) { s.LastProject = pk })
-					}()
-				}
+				pk := msg.ProjectKey
+				persistLast = persistAsync(m.statePath, "last project", func(s *state.State) {
+					s.LastProject = pk
+				})
 			}
 			if msg.Issue.Key != "" && parent == "" {
 				m.list.PrependIssue(msg.Issue)
@@ -693,11 +691,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.shouldOfferEpicLink(parent, typeName) {
 					m.createdPending = msg.Issue
 					m.epicPicker = m.epicPicker.Show(msg.Issue.Key, "")
-					return m, tea.Batch(cmd, refresh, m.searchEpicsCmd(msg.Issue.Key))
+					return m, tea.Batch(cmd, refresh, persistLast, m.searchEpicsCmd(msg.Issue.Key))
 				}
 				m.created = m.created.Show(msg.Issue)
 			}
-			return m, tea.Batch(cmd, refresh)
+			return m, tea.Batch(cmd, refresh, persistLast)
 		}
 		return m, cmd
 	case overlays.CreatedDismissedMsg:
@@ -727,19 +725,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case overlays.OptionsAppliedMsg:
 		m.list.SetStrategy(grouping.ByName(msg.Grouping, m.epicTypes))
 		m.list.SetSort(grouping.SortByName(msg.Sort), msg.Desc)
-		if m.statePath != "" {
-			path := m.statePath
-			grp, srt, desc := msg.Grouping, msg.Sort, msg.Desc
-			go func() {
-				_ = state.Mutate(path, func(s *state.State) {
-					s.Grouping = grp
-					s.Sort = srt
-					d := desc
-					s.SortDesc = &d
-				})
-			}()
-		}
-		return m, m.syncDetailFromList()
+		grp, srt, desc := msg.Grouping, msg.Sort, msg.Desc
+		persist := persistAsync(m.statePath, "options", func(s *state.State) {
+			s.Grouping = grp
+			s.Sort = srt
+			d := desc
+			s.SortDesc = &d
+		})
+		return m, tea.Batch(persist, m.syncDetailFromList())
 	case overlays.OptionsCancelledMsg:
 		return m, nil
 	case assignSearchDoneMsg:
