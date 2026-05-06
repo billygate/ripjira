@@ -364,13 +364,16 @@ func (f Field) viewOptions(s styles.Styles, multi bool) string {
 	}
 	rows := make([]string, 0, len(f.Meta.AllowedValues))
 	for i, opt := range f.Meta.AllowedValues {
-		marker := "  "
-		if multi {
-			if f.selected[opt.ID] {
-				marker = "[x] "
-			} else {
-				marker = "[ ] "
-			}
+		var marker string
+		switch {
+		case multi && f.selected[opt.ID]:
+			marker = "[x] "
+		case multi:
+			marker = "[ ] "
+		case i == f.cursor:
+			marker = "● "
+		default:
+			marker = "○ "
 		}
 		label := marker + opt.Name
 		if i == f.cursor && f.focused {

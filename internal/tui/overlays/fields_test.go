@@ -179,6 +179,34 @@ func TestField_OptionUpDownCyclesAllowedValues(t *testing.T) {
 	}
 }
 
+func TestField_OptionViewMarksSelectedRegardlessOfFocus(t *testing.T) {
+	form := BuildForm(sampleMeta(), FormDefaults{})
+	// Move cursor to priority (focused).
+	for form.Focus() != 2 {
+		form, _ = form.Update(tea.KeyMsg{Type: tea.KeyTab})
+	}
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyDown}) // value -> "2" (Medium)
+
+	st := epicTestStyles()
+	focusedView := form.Fields[2].View(st)
+	if !strings.Contains(focusedView, "● Medium") {
+		t.Errorf("focused option view missing ● marker on Medium:\n%s", focusedView)
+	}
+	if !strings.Contains(focusedView, "○ High") || !strings.Contains(focusedView, "○ Low") {
+		t.Errorf("focused option view missing ○ on unselected rows:\n%s", focusedView)
+	}
+
+	// Tab away so priority is no longer focused.
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if form.Fields[2].Focused() {
+		t.Fatal("priority field should not be focused after tab")
+	}
+	unfocused := form.Fields[2].View(st)
+	if !strings.Contains(unfocused, "● Medium") {
+		t.Errorf("unfocused option view should still mark Medium with ●:\n%s", unfocused)
+	}
+}
+
 func TestField_MultiOptionToggleWithSpace(t *testing.T) {
 	form := BuildForm(sampleMeta(), FormDefaults{})
 	for form.Focus() != 4 { // components
