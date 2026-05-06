@@ -565,3 +565,42 @@ func TestDetail_NoEpicRowWhenAbsent(t *testing.T) {
 		t.Fatalf("did not expect Epic row, got:\n%s", view)
 	}
 }
+
+func TestDetail_ReloadKeepsContentAndBumpsToken(t *testing.T) {
+	loader := newStubLoader()
+	d := newDetail(t, loader)
+	d.SetIssue(sampleHeader())
+	tok1 := d.Token()
+	d, _ = d.Update(panes.IssueLoadedMsg{Key: "PROJ-7", Token: tok1, Issue: jira.Issue{
+		Key:     "PROJ-7",
+		Summary: "Full summary",
+	}})
+	d, _ = d.Update(panes.CommentsLoadedMsg{Key: "PROJ-7", Token: tok1, Comments: []jira.Comment{
+		{Author: jira.User{DisplayName: "Bob"}, Body: "First comment"},
+	}})
+	d, _ = d.Update(panes.TransitionsLoadedMsg{Key: "PROJ-7", Token: tok1, Transitions: []jira.Transition{
+		{ID: "11", Name: "Start", To: jira.Status{Name: "In Progress"}},
+	}})
+
+	cmd := d.Reload()
+	if cmd == nil {
+		t.Fatal("Reload returned nil cmd")
+	}
+	if got := d.Token(); got == tok1 {
+		t.Errorf("token did not bump after Reload (still %d)", got)
+	}
+	if len(d.Transitions()) != 1 {
+		t.Errorf("Reload must not clear current transitions; got %d", len(d.Transitions()))
+	}
+	out := stripANSI(d.View())
+	if !strings.Contains(out, "Bob") || !strings.Contains(out, "First comment") {
+		t.Errorf("Reload should preserve current view until fresh data arrives:\n%s", out)
+	}
+}
+
+func TestDetail_ReloadNoIssueIsNoop(t *testing.T) {
+	d := newDetail(t, newStubLoader())
+	if cmd := d.Reload(); cmd != nil {
+		t.Errorf("Reload with no issue should return nil cmd, got %v", cmd)
+	}
+}

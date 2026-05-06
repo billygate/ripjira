@@ -894,6 +894,36 @@ func TestCreatedDismissed_SelectsIssueWhenInList(t *testing.T) {
 	}
 }
 
+func TestTransitionDone_ReloadsDetailWhenIssueMatches(t *testing.T) {
+	m := newTestAppModelWithLoader(t, 120, 30, &recordingLoader{})
+	_ = m.detail.SetIssue(&jira.Issue{Key: "PROJ-7"})
+	tok := m.detail.Token()
+
+	updated, _ := m.Update(transitionDoneMsg{
+		IssueKey:  "PROJ-7",
+		NewStatus: jira.Status{Name: "Done"},
+	})
+	m = updated.(Model)
+	if m.detail.Token() <= tok {
+		t.Fatalf("transition success must Reload detail (token %d -> %d)", tok, m.detail.Token())
+	}
+}
+
+func TestTransitionDone_NoReloadWhenIssueDiffers(t *testing.T) {
+	m := newTestAppModelWithLoader(t, 120, 30, &recordingLoader{})
+	_ = m.detail.SetIssue(&jira.Issue{Key: "PROJ-7"})
+	tok := m.detail.Token()
+
+	updated, _ := m.Update(transitionDoneMsg{
+		IssueKey:  "OTHER-1",
+		NewStatus: jira.Status{Name: "Done"},
+	})
+	m = updated.(Model)
+	if m.detail.Token() != tok {
+		t.Errorf("non-matching issue must not bump token (got %d, want %d)", m.detail.Token(), tok)
+	}
+}
+
 func TestCreate_LastProjectFromStateOverridesDefault(t *testing.T) {
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, "state.json")
