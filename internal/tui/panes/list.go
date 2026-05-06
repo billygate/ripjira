@@ -222,6 +222,21 @@ func (m *List) SetIssues(issues []jira.Issue) {
 	m.rebuild()
 }
 
+// PrependIssue inserts issue at the head of the source data and rebuilds.
+// No-op when an issue with the same key is already present (the existing
+// entry wins, since it likely carries more server-provided fields). Used to
+// reflect a freshly-created issue immediately, before Jira's eventually
+// consistent search index catches up to a follow-up JQL fetch.
+func (m *List) PrependIssue(issue jira.Issue) {
+	for i := range m.issues {
+		if m.issues[i].Key == issue.Key {
+			return
+		}
+	}
+	m.issues = append([]jira.Issue{issue}, m.issues...)
+	m.rebuild()
+}
+
 // UpdateIssueStatus replaces the Status of the issue with the given key in
 // the source list and rebuilds the view. Returns true when the key was
 // found. The current selection is preserved across the rebuild.
