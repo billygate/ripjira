@@ -5,7 +5,71 @@ import (
 	"testing"
 
 	"github.com/billygate/ripjira/internal/jira"
+	"github.com/billygate/ripjira/internal/tui/overlays"
+	"github.com/billygate/ripjira/internal/tui/themes"
 )
+
+// allThemes returns every registered palette name. New themes added to the
+// registry are automatically exercised by the parametrised bg-coverage runs.
+func allThemes(t *testing.T) []string {
+	t.Helper()
+	names := themes.Names()
+	if len(names) == 0 {
+		t.Fatal("no themes registered")
+	}
+	return names
+}
+
+func newTestModelWithTheme(t *testing.T, name string) Model {
+	t.Helper()
+	p, err := themes.ByName(name)
+	if err != nil {
+		t.Fatalf("load %s: %v", name, err)
+	}
+	return New(p)
+}
+
+// withSelectedIssue plants a fully-populated issue into list+detail so overlay
+// open helpers that early-out on a nil selection actually paint their bodies.
+func withSelectedIssue(m *Model) {
+	iss := jira.Issue{
+		Key:      "PROJ-1",
+		Summary:  "alpha",
+		Priority: jira.Priority{Name: "High"},
+		Status:   jira.Status{Name: "In Progress"},
+		Assignee: &jira.User{DisplayName: "Alice"},
+		Labels:   []string{"backend"},
+		DueDate:  "2026-06-01",
+		Worklogs: []jira.Worklog{{ID: "w1", Author: &jira.User{DisplayName: "Alice"}, TimeSpent: "1h"}},
+		Links: []jira.IssueLink{
+			{ID: "l1", Relation: "blocks", OtherKey: "PROJ-9", Status: jira.Status{Name: "Done"}, Summary: "older"},
+		},
+		Subtasks: []jira.SubtaskRef{
+			{Key: "PROJ-2", Summary: "first child", Status: jira.Status{Name: "To Do"}},
+		},
+	}
+	m.list.SetIssues([]jira.Issue{iss})
+	m.detail.SetIssue(&iss)
+}
+
+func assertNoBlackGaps(t *testing.T, name, out string) {
+	t.Helper()
+	if out == "" {
+		t.Fatalf("[%s] View returned empty string", name)
+	}
+	bad := scanDefaultBg(out)
+	if len(bad) == 0 {
+		return
+	}
+	t.Errorf("[%s] found %d cells with terminal-default bg (black gaps)", name, len(bad))
+	for i, c := range bad {
+		if i >= 8 {
+			t.Logf("  ... %d more", len(bad)-8)
+			break
+		}
+		t.Logf("  row=%d col=%d rune=%q", c.row, c.col, c.r)
+	}
+}
 
 // TestView_NoBlackGapsInPanes renders the model in several states and asserts
 // every visible cell carries an explicit SGR bg, never the terminal default.
@@ -22,7 +86,7 @@ func TestView_NoBlackGapsInPanes(t *testing.T) {
 	}{
 		{
 			name: "list+detail with empty sections",
-			setup: func(t *testing.T, m *Model) {
+			setup: func(_ *testing.T, m *Model) {
 				t.Helper()
 				m.list.SetIssues([]jira.Issue{
 					{Key: "PROJ-1", Summary: "alpha", Priority: jira.Priority{Name: "High"}, Status: jira.Status{Name: "In Progress"}},
@@ -46,7 +110,7 @@ func TestView_NoBlackGapsInPanes(t *testing.T) {
 		// rendering path used to leave.
 		{
 			name: "detail with assignee and labels (literal-string fields)",
-			setup: func(t *testing.T, m *Model) {
+			setup: func(_ *testing.T, m *Model) {
 				t.Helper()
 				m.detail.SetIssue(&jira.Issue{
 					Key:      "PROJ-1",
@@ -61,14 +125,14 @@ func TestView_NoBlackGapsInPanes(t *testing.T) {
 		},
 		{
 			name: "with status text in topbar",
-			setup: func(t *testing.T, m *Model) {
+			setup: func(_ *testing.T, m *Model) {
 				t.Helper()
 				m.statusText = "⟳ refreshing…"
 			},
 		},
 		{
 			name: "detail with links",
-			setup: func(t *testing.T, m *Model) {
+			setup: func(_ *testing.T, m *Model) {
 				t.Helper()
 				m.detail.SetIssue(&jira.Issue{
 					Key:     "PROJ-1",
@@ -82,7 +146,7 @@ func TestView_NoBlackGapsInPanes(t *testing.T) {
 		},
 		{
 			name: "detail with subtasks",
-			setup: func(t *testing.T, m *Model) {
+			setup: func(_ *testing.T, m *Model) {
 				t.Helper()
 				m.detail.SetIssue(&jira.Issue{
 					Key:     "PROJ-1",
@@ -96,7 +160,7 @@ func TestView_NoBlackGapsInPanes(t *testing.T) {
 		},
 		{
 			name: "detail with worklogs",
-			setup: func(t *testing.T, m *Model) {
+			setup: func(_ *testing.T, m *Model) {
 				t.Helper()
 				m.detail.SetIssue(&jira.Issue{
 					Key:     "PROJ-1",
@@ -114,21 +178,163 @@ func TestView_NoBlackGapsInPanes(t *testing.T) {
 			m := newTestModel(t)
 			m, _ = sendSize(m, 120, 30)
 			tc.setup(t, &m)
-			out := m.View()
-			if out == "" {
-				t.Fatal("View returned empty string")
-			}
-			bad := scanDefaultBg(out)
-			if len(bad) > 0 {
-				t.Errorf("found %d cells with terminal-default bg (black gaps)", len(bad))
-				for i, c := range bad {
-					if i >= 12 {
-						t.Logf("... %d more", len(bad)-12)
-						break
+			assertNoBlackGaps(t, tc.name, m.View())
+		})
+	}
+}
+
+// TestView_NoBlackGapsAcrossThemes runs a thin smoke matrix of (theme × state)
+// to guarantee the bg-paint guarantee holds for every registered palette, not
+// only the test default. Each theme's Bg() is fed through hexToBgSGR; an empty
+// bg (malformed hex) would silently pass scanDefaultBg below, so we also
+// require Bg() to be non-empty.
+func TestView_NoBlackGapsAcrossThemes(t *testing.T) {
+	scenarios := []struct {
+		name  string
+		setup func(*testing.T, *Model)
+	}{
+		{"empty list+detail", func(_ *testing.T, _ *Model) {}},
+		{"populated detail", func(_ *testing.T, m *Model) { withSelectedIssue(m) }},
+		{"help overlay", func(_ *testing.T, m *Model) { m.help = m.help.Show() }},
+		{"options overlay", func(_ *testing.T, m *Model) { m.options = m.options.Show("status", "priority", false) }},
+		{"toast", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			m.toasts, _ = m.toasts.Push("hi", ToastInfo)
+		}},
+	}
+	for _, theme := range allThemes(t) {
+		t.Run(theme, func(t *testing.T) {
+			for _, sc := range scenarios {
+				t.Run(sc.name, func(t *testing.T) {
+					m := newTestModelWithTheme(t, theme)
+					if string(m.styles.Palette.Bg()) == "" {
+						t.Fatalf("theme %s has empty Bg()", theme)
 					}
-					t.Logf("  row=%d col=%d rune=%q", c.row, c.col, c.r)
-				}
+					m, _ = sendSize(m, 120, 30)
+					sc.setup(t, &m)
+					assertNoBlackGaps(t, theme+"/"+sc.name, m.View())
+				})
 			}
+		})
+	}
+}
+
+// TestView_NoBlackGapsInOverlays opens every overlay (and a few transient
+// states like preview pane and toast) and asserts View() leaves no
+// terminal-default-bg cells. The overlay body is composed onto the main
+// frame via overlayCenter, so any bg leak inside the overlay body (or the
+// gap between body and frame) shows as a black band.
+func TestView_NoBlackGapsInOverlays(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(*testing.T, *Model)
+	}{
+		{"help", func(_ *testing.T, m *Model) {
+			m.help = m.help.Show()
+		}},
+		{"transition", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openTransitionOverlay()
+			*m = tm.(Model)
+		}},
+		{"comment", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openCommentOverlay()
+			*m = tm.(Model)
+		}},
+		{"assign", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openAssignOverlay()
+			*m = tm.(Model)
+		}},
+		{"create wizard (project step)", func(_ *testing.T, m *Model) {
+			c, _ := m.create.Show([]jira.Project{{Key: "PROJ", Name: "Project"}}, "PROJ")
+			m.create = c
+		}},
+		{"options", func(_ *testing.T, m *Model) {
+			m.options = m.options.Show("status", "priority", false)
+		}},
+		{"edit summary", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openEditOverlay(overlays.EditSummary)
+			*m = tm.(Model)
+		}},
+		{"edit labels", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openEditOverlay(overlays.EditLabels)
+			*m = tm.(Model)
+		}},
+		{"edit due date", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openEditOverlay(overlays.EditDueDate)
+			*m = tm.(Model)
+		}},
+		{"description", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openDescriptionOverlay()
+			*m = tm.(Model)
+		}},
+		{"priority picker", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openPriorityPicker()
+			*m = tm.(Model)
+		}},
+		{"epic picker", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openEpicPicker()
+			*m = tm.(Model)
+		}},
+		{"link add", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openLinkOverlay()
+			*m = tm.(Model)
+		}},
+		{"link remove", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openRemoveLinkOverlay()
+			*m = tm.(Model)
+		}},
+		{"worklog log", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openWorklogOverlay()
+			*m = tm.(Model)
+		}},
+		{"worklog remove", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			tm, _ := m.openRemoveWorklogOverlay()
+			*m = tm.(Model)
+		}},
+		{"favorites", func(_ *testing.T, m *Model) {
+			tm, _ := m.openFavoritesOverlay()
+			*m = tm.(Model)
+		}},
+		{"top-go", func(_ *testing.T, m *Model) {
+			tm, _ := m.openTopGo()
+			*m = tm.(Model)
+		}},
+		{"created popup", func(_ *testing.T, m *Model) {
+			m.created = m.created.Show(jira.Issue{Key: "PROJ-99", Summary: "fresh", Status: jira.Status{Name: "To Do"}})
+		}},
+		{"toast visible", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			m.toasts, _ = m.toasts.Push("hello world", ToastInfo)
+		}},
+		{"preview pane (loading placeholder)", func(_ *testing.T, m *Model) {
+			withSelectedIssue(m)
+			m.preview.Active = true
+			m.preview.Attachment = jira.Attachment{ID: "a1", Filename: "shot.png", MimeType: "image/png"}
+		}},
+		{"search active (input editing)", func(_ *testing.T, m *Model) {
+			m.list.SetSearchEditing("foo")
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newTestModel(t)
+			m, _ = sendSize(m, 120, 30)
+			tc.setup(t, &m)
+			assertNoBlackGaps(t, tc.name, m.View())
 		})
 	}
 }
