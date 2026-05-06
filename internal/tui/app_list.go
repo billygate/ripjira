@@ -358,13 +358,25 @@ func (m *Model) startPrefetch(issues []jira.Issue) tea.Cmd {
 	if m.prefetchCancel != nil {
 		m.prefetchCancel()
 	}
+	// Wait for any prior prefetch goroutine to actually exit before
+	// starting a new one. Bounded by the cancellation latency of the
+	// in-flight HTTP call, so a tea.Quit can rely on the previous handle
+	// being closed.
+	if m.prefetchDone != nil {
+		<-m.prefetchDone
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	m.prefetchCancel = cancel
 	keys := make([]string, len(issues))
 	for i, is := range issues {
 		keys[i] = is.Key
 	}
-	go pf.PrefetchIssues(ctx, keys)
+	done := make(chan struct{})
+	m.prefetchDone = done
+	go func() {
+		defer close(done)
+		pf.PrefetchIssues(ctx, keys)
+	}()
 	return prefetchTick()
 }
 

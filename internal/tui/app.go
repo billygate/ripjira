@@ -127,6 +127,7 @@ type Model struct {
 	recentlyCreated jira.Issue
 
 	prefetchCancel context.CancelFunc
+	prefetchDone   chan struct{}
 
 	pendingQuitUntil time.Time
 

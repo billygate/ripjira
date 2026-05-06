@@ -38,16 +38,14 @@ func TestModel_LoadsCommentDraftsAtStartup(t *testing.T) {
 }
 
 // TestSaveDraft_UpdatesCacheImmediately asserts saveDraft writes are
-// visible to the next loadDraft synchronously, before the background
-// state.Mutate goroutine flushes.
+// visible to the next loadDraft synchronously. No statePath so the
+// background goroutine doesn't race with t.TempDir cleanup.
 func TestSaveDraft_UpdatesCacheImmediately(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "state.json")
 	p, err := themes.ByName("tokyonight")
 	if err != nil {
 		t.Fatalf("palette: %v", err)
 	}
-	m := New(p, WithStatePath(path))
+	m := New(p)
 	m.saveDraft("PROJ-7", "fresh body")
 	if got := m.loadDraft("PROJ-7"); got != "fresh body" {
 		t.Fatalf("loadDraft after saveDraft = %q, want %q", got, "fresh body")
