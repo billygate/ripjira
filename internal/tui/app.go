@@ -154,6 +154,11 @@ type Model struct {
 	// favorites overlay reads from here; favorite-write handlers update
 	// it alongside firing the background state.Mutate.
 	favoritesCache []state.Favorite
+
+	// lastProject is the persisted last-used create-wizard project key.
+	// Loaded once at startup; written via state.Mutate after every
+	// successful create.
+	lastProject string
 }
 
 // chromeHeightCache memoises the per-frame heights of the three single-line
@@ -236,6 +241,7 @@ func New(p themes.Palette, opts ...Option) Model {
 			m.list.SetSort(grouping.SortByName(sortName), desc)
 			m.recentKeys = append([]string(nil), st.RecentlyViewed...)
 			m.favoritesCache = append([]state.Favorite(nil), st.Favorites...)
+			m.lastProject = st.LastProject
 			for k, v := range st.CommentDrafts {
 				m.commentDrafts[k] = v
 			}
@@ -584,10 +590,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, toast
 		}
 		preselect := m.defaultProject
-		if m.statePath != "" {
-			if st, err := state.Load(m.statePath); err == nil && st.LastProject != "" {
-				preselect = st.LastProject
-			}
+		if m.lastProject != "" {
+			preselect = m.lastProject
 		}
 		c, cmd := m.create.Show(msg.Projects, preselect)
 		m.create = c
@@ -668,12 +672,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.detail.AppendSubtask(parent, sub)
 			}
-			if m.statePath != "" && msg.ProjectKey != "" {
-				path := m.statePath
-				pk := msg.ProjectKey
-				go func() {
-					_ = state.Mutate(path, func(s *state.State) { s.LastProject = pk })
-				}()
+			if msg.ProjectKey != "" {
+				m.lastProject = msg.ProjectKey
+				if m.statePath != "" {
+					path := m.statePath
+					pk := msg.ProjectKey
+					go func() {
+						_ = state.Mutate(path, func(s *state.State) { s.LastProject = pk })
+					}()
+				}
 			}
 			if msg.Issue.Key != "" && parent == "" {
 				m.list.PrependIssue(msg.Issue)

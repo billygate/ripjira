@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/billygate/ripjira/internal/jira"
 	"github.com/billygate/ripjira/internal/state"
 	"github.com/billygate/ripjira/internal/tui/themes"
 )
@@ -76,4 +77,37 @@ func TestModel_LoadsFavoritesAtStartup(t *testing.T) {
 	if len(got) != 1 || got[0].Name != "mine" || got[0].JQL != "assignee = currentUser()" {
 		t.Fatalf("loadFavoriteEntries = %+v, want one entry", got)
 	}
+}
+
+// TestCreateWizard_PreselectsLastProjectFromCache asserts the create
+// wizard preselects the cached LastProject without re-reading state.json.
+func TestCreateWizard_PreselectsLastProjectFromCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	if err := state.Mutate(path, func(s *state.State) { s.LastProject = "OPS" }); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	p, err := themes.ByName("tokyonight")
+	if err != nil {
+		t.Fatalf("palette: %v", err)
+	}
+	m := New(p, WithStatePath(path))
+	if err := os.WriteFile(path, []byte("{not-json"), 0o600); err != nil {
+		t.Fatalf("corrupt: %v", err)
+	}
+	mi, _ := m.Update(createProjectsLoadedMsg{Projects: []jira.Project{{Key: "OPS"}, {Key: "ENG"}}})
+	c := mi.(Model).Create()
+	projects := c.Projects()
+	cursor := c.ProjectCursor()
+	if cursor < 0 || cursor >= len(projects) || projects[cursor].Key != "OPS" {
+		t.Fatalf("preselect cursor = %d (key %v), want cursor on OPS",
+			cursor, projectKeyAt(projects, cursor))
+	}
+}
+
+func projectKeyAt(projects []jira.Project, i int) string {
+	if i < 0 || i >= len(projects) {
+		return ""
+	}
+	return projects[i].Key
 }
