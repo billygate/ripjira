@@ -724,6 +724,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pushRecent(loaded.Key)
 		}
 		return m, cmd
+	case panes.DigitJumpTimeoutMsg:
+		// Forward the digit-jump timeout from the list pane back to it.
+		// Without this route the message lands in the default branch and
+		// gets eaten by the spinner, so single-digit jumps never fire.
+		var cmd tea.Cmd
+		m.list, cmd = m.list.Update(msg)
+		return m, cmd
 	case panes.SearchSubmittedMsg:
 		m.searchQuery = msg.Query
 		m.list.SetSearchCollapsed(msg.Query)

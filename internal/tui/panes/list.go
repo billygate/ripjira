@@ -23,11 +23,13 @@ import (
 
 // digitJumpTimeout is how long the pane waits for a second digit before
 // committing a buffered single-digit jump on lists with ≥10 issues.
-const digitJumpTimeout = 700 * time.Millisecond
+// 2s is a comfortable upper bound for natural typing of two-digit jumps
+// without making single-digit jumps feel laggy.
+const digitJumpTimeout = 2 * time.Second
 
-// digitJumpTimeoutMsg is dispatched after digitJumpTimeout to commit a
+// DigitJumpTimeoutMsg is dispatched after digitJumpTimeout to commit a
 // pending one-digit jump when the user didn't follow up with a second digit.
-type digitJumpTimeoutMsg struct{ gen int }
+type DigitJumpTimeoutMsg struct{ Gen int }
 
 // searchInputState tracks whether the search header is hidden, editable,
 // or collapsed to a one-line summary. Only the Search view ever moves it
@@ -116,6 +118,9 @@ type List struct {
 	localFilter        string
 	localFilterEditing bool
 
+	// pendingDigit is the first digit of a two-digit jump waiting for its
+	// second digit (or the timeout). -1 means "no pending digit"; 0 is a
+	// real value used by leading-zero jumps like "01"/"02".
 	pendingDigit int
 	pendingGen   int
 
@@ -176,12 +181,13 @@ func New(s styles.Styles, strategy grouping.Strategy, width, height int) List {
 		b.SetEnabled(false)
 	}
 	return List{
-		styles:    s,
-		strategy:  strategy,
-		collapsed: map[string]bool{},
-		list:      l,
-		width:     width,
-		height:    height,
+		styles:       s,
+		strategy:     strategy,
+		collapsed:    map[string]bool{},
+		list:         l,
+		width:        width,
+		height:       height,
+		pendingDigit: -1,
 	}
 }
 
@@ -346,6 +352,12 @@ func (m List) Groups() []grouping.Group { return m.groups }
 
 // Selected returns the issue under the cursor or nil if a group header is
 // selected (or the list is empty).
+// PendingDigitGen returns the generation counter used by the digit-jump
+// timeout. Callers that need to schedule or simulate the timeout (root
+// model routing tests, primarily) read this so the synthetic
+// DigitJumpTimeoutMsg they send carries the matching Gen.
+func (m List) PendingDigitGen() int { return m.pendingGen }
+
 func (m List) Selected() *jira.Issue {
 	it, ok := m.list.SelectedItem().(listItem)
 	if !ok || it.isGroup() {
@@ -521,11 +533,11 @@ func (m List) Update(msg tea.Msg) (List, tea.Cmd) {
 		m.issues = msg.Issues
 		m.rebuild()
 		return m, nil
-	case digitJumpTimeoutMsg:
-		if msg.gen == m.pendingGen && m.pendingDigit > 0 {
+	case DigitJumpTimeoutMsg:
+		if msg.Gen == m.pendingGen && m.pendingDigit >= 0 {
 			d := m.pendingDigit
-			m.pendingDigit = 0
-			m.JumpToIssue(d)
+			m.pendingDigit = -1
+			m.JumpToIssue(d) // JumpToIssue(0) is a safe no-op.
 		}
 		return m, nil
 	case tea.KeyMsg:
@@ -577,17 +589,17 @@ func (m List) Update(msg tea.Msg) (List, tea.Cmd) {
 		if len(s) == 1 && s[0] >= '0' && s[0] <= '9' {
 			d := int(s[0] - '0')
 			n := m.visibleIssueCount()
-			if m.pendingDigit > 0 {
+			if m.pendingDigit >= 0 {
 				combined := m.pendingDigit*10 + d
-				m.pendingDigit = 0
+				m.pendingDigit = -1
 				m.pendingGen++
 				m.JumpToIssue(combined)
 				return m, nil
 			}
-			if d == 0 {
-				return m, nil
-			}
-			if n < 10 || d*10 > n {
+			// d == 0 is never a valid standalone jump target (issues are
+			// 1-indexed), but it IS a valid leading digit of "01" / "02".
+			// Always queue it and wait for the second digit.
+			if d > 0 && (n < 10 || d*10 > n) {
 				m.JumpToIssue(d)
 				return m, nil
 			}
@@ -595,11 +607,11 @@ func (m List) Update(msg tea.Msg) (List, tea.Cmd) {
 			m.pendingGen++
 			gen := m.pendingGen
 			return m, tea.Tick(digitJumpTimeout, func(time.Time) tea.Msg {
-				return digitJumpTimeoutMsg{gen: gen}
+				return DigitJumpTimeoutMsg{Gen: gen}
 			})
 		}
-		if m.pendingDigit > 0 {
-			m.pendingDigit = 0
+		if m.pendingDigit >= 0 {
+			m.pendingDigit = -1
 			m.pendingGen++
 		}
 		switch s {

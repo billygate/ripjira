@@ -267,6 +267,86 @@ func TestList_NumberJumpsToNthIssue(t *testing.T) {
 	}
 }
 
+// bigSampleIssues returns 12 flat-grouped issues so we can exercise the
+// two-digit jump path (which is gated by visibleIssueCount >= 10).
+func bigSampleIssues() []jira.Issue {
+	out := make([]jira.Issue, 0, 12)
+	for i := 1; i <= 12; i++ {
+		out = append(out, jira.Issue{
+			Key:      "PROJ-" + itoa(i),
+			Summary:  "row " + itoa(i),
+			Status:   jira.Status{Name: "To Do", Category: "new"},
+			Priority: jira.Priority{Name: "High"},
+		})
+	}
+	return out
+}
+
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	digits := []byte{}
+	for i > 0 {
+		digits = append([]byte{byte('0' + i%10)}, digits...)
+		i /= 10
+	}
+	return string(digits)
+}
+
+// TestList_LeadingZeroJump asserts that "0" followed by another digit jumps
+// to that single-digit position. Real-world need: muscle-memory like "01" /
+// "02" should not be silently dropped just because the first digit is 0.
+func TestList_LeadingZeroJump(t *testing.T) {
+	l := newList(t)
+	l.SetIssues(bigSampleIssues())
+
+	// "0" then "1" → jump to PROJ-1 (combined 0*10 + 1 = 1).
+	l, _ = l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'0'}})
+	l, _ = l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	if got := l.Selected(); got == nil || got.Key != "PROJ-1" {
+		t.Fatalf("after 01: selected = %v, want PROJ-1", got)
+	}
+
+	// "0" then "2" → PROJ-2.
+	l, _ = l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'0'}})
+	l, _ = l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	if got := l.Selected(); got == nil || got.Key != "PROJ-2" {
+		t.Fatalf("after 02: selected = %v, want PROJ-2", got)
+	}
+}
+
+// TestList_TwoDigitJump asserts that "1" then "2" with a list of >=12
+// issues jumps to PROJ-12 (combined 12), not PROJ-1 then PROJ-2.
+func TestList_TwoDigitJump(t *testing.T) {
+	l := newList(t)
+	l.SetIssues(bigSampleIssues())
+	l, _ = l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	l, _ = l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	if got := l.Selected(); got == nil || got.Key != "PROJ-12" {
+		t.Fatalf("after 12: selected = %v, want PROJ-12", got)
+	}
+}
+
+// TestList_StandaloneZeroIsNoOp asserts that pressing "0" alone (followed
+// by a non-digit, simulating a timeout) doesn't move the selection.
+func TestList_StandaloneZeroIsNoOp(t *testing.T) {
+	l := newList(t)
+	l.SetIssues(bigSampleIssues())
+	// Move to PROJ-3 so we have a baseline that's not the default top row.
+	l, _ = l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'3'}})
+	before := l.Selected()
+	if before == nil || before.Key != "PROJ-3" {
+		t.Fatalf("setup: expected PROJ-3, got %v", before)
+	}
+	// "0" then a non-digit clears the pending state without jumping.
+	l, _ = l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'0'}})
+	l, _ = l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	if got := l.Selected(); got == nil || got.Key != before.Key {
+		t.Fatalf("standalone 0 changed selection: %v → %v", before, got)
+	}
+}
+
 func TestList_NumberKeyInertWhileSearchEditing(t *testing.T) {
 	l := newList(t)
 	l.SetIssues(sampleIssues())
