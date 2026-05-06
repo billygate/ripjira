@@ -102,18 +102,11 @@ func (m Model) saveDraft(issueKey, body string) {
 // clearDraft drops the stored draft for issueKey.
 func (m Model) clearDraft(issueKey string) { m.saveDraft(issueKey, "") }
 
-// loadFavoriteEntries returns the saved favorites as overlay entries, or
-// an empty slice when state is unavailable.
+// loadFavoriteEntries returns the saved favorites as overlay entries.
+// Reads the in-memory cache populated at startup.
 func (m Model) loadFavoriteEntries() []overlays.FavoriteEntry {
-	if m.statePath == "" {
-		return nil
-	}
-	st, err := state.Load(m.statePath)
-	if err != nil {
-		return nil
-	}
-	out := make([]overlays.FavoriteEntry, 0, len(st.Favorites))
-	for _, f := range st.Favorites {
+	out := make([]overlays.FavoriteEntry, 0, len(m.favoritesCache))
+	for _, f := range m.favoritesCache {
 		out = append(out, overlays.FavoriteEntry{Name: f.Name, JQL: f.JQL})
 	}
 	return out

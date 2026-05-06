@@ -149,6 +149,11 @@ type Model struct {
 	// loadDraft is a map lookup, not sync disk I/O on the main goroutine.
 	// saveDraft updates this map and persists to disk in the background.
 	commentDrafts map[string]string
+
+	// favoritesCache mirrors state.Favorites loaded once at startup. The
+	// favorites overlay reads from here; favorite-write handlers update
+	// it alongside firing the background state.Mutate.
+	favoritesCache []state.Favorite
 }
 
 // chromeHeightCache memoises the per-frame heights of the three single-line
@@ -230,6 +235,7 @@ func New(p themes.Palette, opts ...Option) Model {
 			}
 			m.list.SetSort(grouping.SortByName(sortName), desc)
 			m.recentKeys = append([]string(nil), st.RecentlyViewed...)
+			m.favoritesCache = append([]state.Favorite(nil), st.Favorites...)
 			for k, v := range st.CommentDrafts {
 				m.commentDrafts[k] = v
 			}

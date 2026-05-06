@@ -52,3 +52,28 @@ func TestSaveDraft_UpdatesCacheImmediately(t *testing.T) {
 		t.Fatalf("loadDraft after saveDraft = %q, want %q", got, "fresh body")
 	}
 }
+
+// TestModel_LoadsFavoritesAtStartup asserts favorites written before
+// New(...) was called are visible via loadFavoriteEntries without
+// re-reading disk.
+func TestModel_LoadsFavoritesAtStartup(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	if err := state.Mutate(path, func(s *state.State) {
+		s.Favorites = append(s.Favorites, state.Favorite{Name: "mine", JQL: "assignee = currentUser()"})
+	}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+	p, err := themes.ByName("tokyonight")
+	if err != nil {
+		t.Fatalf("palette: %v", err)
+	}
+	m := New(p, WithStatePath(path))
+	if err := os.WriteFile(path, []byte("{not-json"), 0o600); err != nil {
+		t.Fatalf("corrupt state: %v", err)
+	}
+	got := m.loadFavoriteEntries()
+	if len(got) != 1 || got[0].Name != "mine" || got[0].JQL != "assignee = currentUser()" {
+		t.Fatalf("loadFavoriteEntries = %+v, want one entry", got)
+	}
+}

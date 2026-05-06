@@ -490,11 +490,24 @@ func (m Model) handleFavoriteApplied(msg overlays.FavoriteAppliedMsg) (tea.Model
 // write happens in a goroutine via state.Mutate so the Update loop never
 // blocks on disk I/O.
 func (m Model) handleFavoriteSaved(msg overlays.FavoriteSavedMsg) (tea.Model, tea.Cmd) {
+	name, jql := msg.Name, msg.JQL
+	// Update in-memory cache so the favorites overlay reflects the change
+	// without waiting on the background state.Mutate goroutine.
+	replaced := false
+	for i := range m.favoritesCache {
+		if m.favoritesCache[i].Name == name {
+			m.favoritesCache[i].JQL = jql
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		m.favoritesCache = append(m.favoritesCache, state.Favorite{Name: name, JQL: jql})
+	}
 	if m.statePath == "" {
 		return m, nil
 	}
 	path := m.statePath
-	name, jql := msg.Name, msg.JQL
 	go func() {
 		_ = state.Mutate(path, func(s *state.State) {
 			// Replace any existing entry with the same name so saving
@@ -516,11 +529,18 @@ func (m Model) handleFavoriteSaved(msg overlays.FavoriteSavedMsg) (tea.Model, te
 
 // handleFavoriteDeleted persists the removal to state.json.
 func (m Model) handleFavoriteDeleted(msg overlays.FavoriteDeletedMsg) (tea.Model, tea.Cmd) {
+	name := msg.Name
+	out := m.favoritesCache[:0]
+	for _, f := range m.favoritesCache {
+		if f.Name != name {
+			out = append(out, f)
+		}
+	}
+	m.favoritesCache = out
 	if m.statePath == "" {
 		return m, nil
 	}
 	path := m.statePath
-	name := msg.Name
 	go func() {
 		_ = state.Mutate(path, func(s *state.State) {
 			out := s.Favorites[:0]
