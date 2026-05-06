@@ -47,59 +47,70 @@ type Styles struct {
 // New constructs a Styles bound to the given palette.
 func New(p themes.Palette) Styles {
 	border := lipgloss.RoundedBorder()
+	bg := p.Bg()
+	on := func(s lipgloss.Style) lipgloss.Style { return s.Background(bg) }
 	return Styles{
 		Palette: p,
 
-		App:     lipgloss.NewStyle().Foreground(p.Fg()).Background(p.Bg()),
-		TopBar:  lipgloss.NewStyle().Foreground(p.Accent()).Bold(true).Padding(0, 1),
-		HintBar: lipgloss.NewStyle().Foreground(p.Muted()).Padding(0, 1),
+		App:     lipgloss.NewStyle().Foreground(p.Fg()).Background(bg),
+		TopBar:  on(lipgloss.NewStyle().Foreground(p.Accent()).Bold(true).Padding(0, 1)),
+		HintBar: on(lipgloss.NewStyle().Foreground(p.Muted()).Padding(0, 1)),
 
-		PaneBorder:        lipgloss.NewStyle().Border(border).BorderForeground(p.Muted()),
-		PaneBorderFocused: lipgloss.NewStyle().Border(border).BorderForeground(p.Accent()),
-		PaneTitle:         lipgloss.NewStyle().Foreground(p.Accent()).Bold(true),
+		PaneBorder:        on(lipgloss.NewStyle().Border(border).BorderForeground(p.Muted()).BorderBackground(bg)),
+		PaneBorderFocused: on(lipgloss.NewStyle().Border(border).BorderForeground(p.Accent()).BorderBackground(bg)),
+		PaneTitle:         on(lipgloss.NewStyle().Foreground(p.Accent()).Bold(true)),
 
-		ListItem:         lipgloss.NewStyle().Foreground(p.Fg()),
-		ListItemSelected: lipgloss.NewStyle().Foreground(p.Bg()).Background(p.Accent()).Bold(true),
-		GroupHeader:      lipgloss.NewStyle().Foreground(p.Cyan()).Bold(true),
+		ListItem:         on(lipgloss.NewStyle().Foreground(p.Fg())),
+		ListItemSelected: lipgloss.NewStyle().Foreground(bg).Background(p.Accent()).Bold(true),
+		GroupHeader:      on(lipgloss.NewStyle().Foreground(p.Cyan()).Bold(true)),
 
-		SectionHeader: lipgloss.NewStyle().Foreground(p.Accent()).Bold(true).Underline(true),
-		Description:   lipgloss.NewStyle().Foreground(p.Fg()),
+		SectionHeader: on(lipgloss.NewStyle().Foreground(p.Accent()).Bold(true).Underline(true)),
+		Description:   on(lipgloss.NewStyle().Foreground(p.Fg())),
 
-		Muted:  lipgloss.NewStyle().Foreground(p.Muted()),
-		Accent: lipgloss.NewStyle().Foreground(p.Accent()),
-		Error:  lipgloss.NewStyle().Foreground(p.Red()).Bold(true),
-		Toast:  lipgloss.NewStyle().Foreground(p.Bg()).Background(p.Yellow()).Padding(0, 1),
+		Muted:  on(lipgloss.NewStyle().Foreground(p.Muted())),
+		Accent: on(lipgloss.NewStyle().Foreground(p.Accent())),
+		Error:  on(lipgloss.NewStyle().Foreground(p.Red()).Bold(true)),
+		Toast:  lipgloss.NewStyle().Foreground(bg).Background(p.Yellow()).Padding(0, 1),
 
-		OverlayBorder: lipgloss.NewStyle().Border(border).BorderForeground(p.Accent()).Padding(1, 2),
-		OverlayTitle:  lipgloss.NewStyle().Foreground(p.Magenta()).Bold(true),
+		OverlayBorder: lipgloss.NewStyle().Border(border).BorderForeground(p.Accent()).BorderBackground(bg).Background(bg).Padding(1, 2),
+		OverlayTitle:  on(lipgloss.NewStyle().Foreground(p.Magenta()).Bold(true)),
 
 		PreviewBadge: lipgloss.NewStyle().
-			Foreground(p.Bg()).
+			Foreground(bg).
 			Background(p.Green()).
 			Bold(true).
 			Padding(0, 1),
 
-		ActiveTab: lipgloss.NewStyle().
-			Foreground(p.Bg()).
-			Background(p.Accent()).
+		ActiveTab: on(lipgloss.NewStyle().
+			Foreground(p.Accent()).
 			Bold(true).
-			Padding(0, 2),
-		InactiveTab: lipgloss.NewStyle().
+			Underline(true).
+			Padding(0, 1)),
+		InactiveTab: on(lipgloss.NewStyle().
 			Foreground(p.Muted()).
-			Padding(0, 2),
-		TabDivider: lipgloss.NewStyle().
-			Foreground(p.Muted()),
+			Padding(0, 1)),
+		TabDivider: on(lipgloss.NewStyle().
+			Foreground(p.Muted())),
 	}
 }
 
 // Priority returns a style for rendering a Jira priority label, with the
-// foreground color sourced from the palette.
+// foreground color sourced from the palette and the bg pinned to the
+// palette's Bg so concatenating it with surrounding text doesn't leave a
+// terminal-default-bg gap on dark themes.
 func (s Styles) Priority(name string) lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(s.Palette.Priority(name)).Bold(true)
+	return lipgloss.NewStyle().
+		Foreground(s.Palette.Priority(name)).
+		Background(s.Palette.Bg()).
+		Bold(true)
 }
 
 // Status returns a style for rendering a Jira status category label
-// ("new", "indeterminate", "done").
+// ("new", "indeterminate", "done"). Bg is pinned for the same reason as
+// Priority.
 func (s Styles) Status(category string) lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(s.Palette.Status(category)).Bold(true)
+	return lipgloss.NewStyle().
+		Foreground(s.Palette.Status(category)).
+		Background(s.Palette.Bg()).
+		Bold(true)
 }

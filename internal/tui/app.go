@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -3148,9 +3149,103 @@ func (m Model) View() string {
 	frame := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
 	if v := m.activeOverlay(); v != "" {
-		return overlayCenter(frame, v)
+		frame = overlayCenter(frame, v)
 	}
-	return frame
+	out := m.styles.App.Width(m.width).Height(m.height).Render(frame)
+	return seamFrameBg(out, hexToBgSGR(string(m.styles.Palette.Bg())))
+}
+
+// seamFrameBg patches "black gaps" in the rendered frame. Lipgloss does not
+// re-establish a parent's Background after a child span's `\x1b[0m` reset,
+// so plain text concatenated outside a styled span (gaps in detail
+// rendering, glamour-rendered markdown, overlay bodies) leaks the host
+// terminal's default bg through. This walks the rendered string and
+// inserts bgSGR before every printable rune that follows a `\x1b[0m`
+// without an interleaving SGR that already sets a bg. The visible output
+// is unchanged for cells that were already styled; only the unstyled gaps
+// pick up the palette's bg. Empty bgSGR (legacy / unknown palette) leaves
+// content unchanged.
+func seamFrameBg(s, bgSGR string) string {
+	if bgSGR == "" || s == "" {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s) + 64)
+	runes := []rune(s)
+	resetPending := false
+	i := 0
+	for i < len(runes) {
+		r := runes[i]
+		if r == 0x1b && i+1 < len(runes) && runes[i+1] == '[' {
+			j := i + 2
+			for j < len(runes) {
+				c := runes[j]
+				if c >= 0x40 && c <= 0x7e && c != ';' {
+					break
+				}
+				j++
+			}
+			if j < len(runes) && runes[j] == 'm' {
+				params := string(runes[i+2 : j])
+				if params == "" || params == "0" {
+					resetPending = true
+				} else if sgrSetsBg(params) {
+					resetPending = false
+				}
+			}
+			b.WriteString(string(runes[i : j+1]))
+			i = j + 1
+			continue
+		}
+		if r == '\n' {
+			resetPending = false
+			b.WriteRune(r)
+			i++
+			continue
+		}
+		if resetPending {
+			b.WriteString(bgSGR)
+			resetPending = false
+		}
+		b.WriteRune(r)
+		i++
+	}
+	return b.String()
+}
+
+// sgrSetsBg reports whether an SGR parameter list explicitly sets a bg color.
+// Matches the 256-color (48;5;…) and truecolor (48;2;R;G;B) prefixes plus
+// the legacy 8/16-color codes. SGR 49 (default bg) is intentionally NOT
+// treated as setting one — it would re-leak the terminal default.
+func sgrSetsBg(params string) bool {
+	parts := strings.Split(params, ";")
+	for _, p := range parts {
+		if p == "48" {
+			return true
+		}
+	}
+	return false
+}
+
+// hexToBgSGR returns the truecolor SGR escape that paints the given hex
+// color (#RRGGBB) as the background. Returns "" for malformed input.
+func hexToBgSGR(hex string) string {
+	if len(hex) != 7 || hex[0] != '#' {
+		return ""
+	}
+	r, err := strconv.ParseInt(hex[1:3], 16, 0)
+	if err != nil {
+		return ""
+	}
+	g, err := strconv.ParseInt(hex[3:5], 16, 0)
+	if err != nil {
+		return ""
+	}
+	bb, err := strconv.ParseInt(hex[5:7], 16, 0)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r, g, bb)
 }
 
 // activeOverlay returns the visible overlay's rendered view, or "" when no
@@ -3285,17 +3380,41 @@ func (m Model) paneDims() (listW, detailW, previewW, contentHeight int) {
 }
 
 func (m Model) renderTopBar() string {
-	parts := []string{m.styles.TopBar.Render("~/RJ>"), m.renderTabs()}
+	// Left: home label + tabs. The tab strip stays visually pinned so it
+	// doesn't shift when transient indicators come and go.
+	left := []string{m.styles.TopBar.Render("~/RJ>"), m.renderTabs()}
+	// Right: spinner / prefetch / status — anchored to the right edge so
+	// they don't push the tab strip around.
+	right := make([]string, 0, 3)
 	if sp := m.spinner.View(); sp != "" {
-		parts = append(parts, m.styles.Accent.Render(sp))
+		right = append(right, m.styles.Accent.Render(sp))
 	}
 	if pi := m.renderPrefetchIndicator(); pi != "" {
-		parts = append(parts, pi)
+		right = append(right, pi)
 	}
 	if m.statusText != "" {
-		parts = append(parts, m.styles.Muted.Render(m.statusText))
+		right = append(right, m.styles.Muted.Render(m.statusText))
 	}
-	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(parts, "  "))
+	sep := m.styles.App.Render(" ")
+	leftStr := strings.Join(left, sep)
+	rightStr := strings.Join(right, sep)
+	if m.width <= 0 {
+		return m.styles.App.Render(leftStr + sep + rightStr)
+	}
+	leftW, rightW := lipgloss.Width(leftStr), lipgloss.Width(rightStr)
+	gap := m.width - leftW - rightW
+	if gap < 1 {
+		// Not enough room for both — clip the tab strip and keep the
+		// indicators visible. Single space between left and right.
+		clipTo := m.width - rightW - 1
+		if clipTo < 0 {
+			clipTo = 0
+		}
+		leftStr = ansi.Truncate(leftStr, clipTo, "")
+		gap = 1
+	}
+	pad := m.styles.App.Render(strings.Repeat(" ", gap))
+	return m.styles.App.Width(m.width).Render(leftStr + pad + rightStr)
 }
 
 // renderTabs returns just the horizontal tab cells, with the active view
@@ -3309,7 +3428,7 @@ func (m Model) renderTopBar() string {
 func (m Model) renderTabs() string {
 	active := panes.TopGroup(m.view)
 	topCell := m.styles.ActiveTab.Render(active.String()) +
-		m.styles.Muted.Render(" [g]")
+		m.styles.Muted.Render("[g]")
 	subs := panes.SubViews(active)
 	if len(subs) <= 1 {
 		return topCell

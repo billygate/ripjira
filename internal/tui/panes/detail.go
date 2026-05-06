@@ -158,12 +158,16 @@ func NewDetail(s styles.Styles, l Loader, width, height int) Detail {
 	return d
 }
 
-// SetSize forwards width/height to the inner viewport.
+// SetSize forwards width/height to the inner viewport and rebuilds the
+// rendered content. The rebuild matters because content is bg-padded to
+// d.width; without re-running refreshContent here, the placeholder rendered
+// at construction time (with width=1) stays wrapped char-per-line.
 func (d *Detail) SetSize(w, h int) {
 	d.width = w
 	d.height = h
 	d.vp.Width = w
 	d.vp.Height = h
+	d.refreshContent()
 }
 
 // Issue returns the issue currently displayed, or nil if none.
@@ -706,17 +710,17 @@ func mergeIssue(prev *jira.Issue, full jira.Issue) jira.Issue {
 func (d *Detail) refreshContent() {
 	d.commentRowOffsets = nil
 	if d.issue == nil {
-		d.vp.SetContent(d.styles.Muted.Render("No issue selected."))
+		d.vp.SetContent(padLinesWithBg(d.styles.Muted.Render("No issue selected."), d.width, d.styles))
 		return
 	}
 	var b strings.Builder
 	b.WriteString(d.styles.PaneTitle.Render(d.issue.Key))
 	if d.issue.Priority.Name != "" {
-		b.WriteString("  ")
+		b.WriteString(d.styles.App.Render("  "))
 		b.WriteString(d.styles.Priority(d.issue.Priority.Name).Render("● " + d.issue.Priority.Name))
 	}
 	if d.HasImagePreview() {
-		b.WriteString(" ")
+		b.WriteString(d.styles.App.Render(" "))
 		b.WriteString(d.styles.PreviewBadge.Render("PREVIEW"))
 	}
 	b.WriteString("\n")
@@ -769,10 +773,11 @@ func (d *Detail) refreshContent() {
 			if i > 0 {
 				b.WriteString("\n")
 			}
-			fmt.Fprintf(&b, "%-12s  %-12s  %s",
+			b.WriteString(d.styles.App.Render(fmt.Sprintf(
+				"%-12s  %-12s  %s",
 				s.Key,
 				truncate(s.Status.Name, 12),
-				truncate(s.Summary, 60))
+				truncate(s.Summary, 60))))
 		}
 	}
 
@@ -795,10 +800,11 @@ func (d *Detail) refreshContent() {
 			if !w.Started.IsZero() {
 				when = w.Started.Format("2006-01-02")
 			}
-			fmt.Fprintf(&b, "%-10s  %-12s  %s",
+			b.WriteString(d.styles.App.Render(fmt.Sprintf(
+				"%-10s  %-12s  %s",
 				truncate(w.TimeSpent, 10),
 				truncate(when, 12),
-				truncate(author, 40))
+				truncate(author, 40))))
 		}
 	}
 
@@ -813,11 +819,16 @@ func (d *Detail) refreshContent() {
 			if i > 0 {
 				b.WriteString("\n")
 			}
-			fmt.Fprintf(&b, "%s %-12s  %-12s  %s",
-				d.styles.Muted.Render(truncate(l.Relation, 16)),
+			// Render the relation muted, the rest through App so the bg
+			// covers the whole row — lipgloss doesn't re-emit a parent's bg
+			// after a child span's `\x1b[0m`, so plain Fprintf'd text would
+			// otherwise show the terminal's default bg.
+			b.WriteString(d.styles.Muted.Render(truncate(l.Relation, 16)))
+			b.WriteString(d.styles.App.Render(fmt.Sprintf(
+				" %-12s  %-12s  %s",
 				l.OtherKey,
 				truncate(l.Status.Name, 12),
-				truncate(l.Summary, 60))
+				truncate(l.Summary, 60))))
 		}
 	}
 
@@ -886,5 +897,25 @@ func (d *Detail) refreshContent() {
 		}
 	}
 
-	d.vp.SetContent(b.String())
+	d.vp.SetContent(padLinesWithBg(b.String(), d.width, d.styles))
+}
+
+// padLinesWithBg pads each line of s to width w using the App style so
+// trailing spaces inherit the palette's bg color. Without this, lipgloss
+// segments show terminal default bg between styled spans, leaving black
+// gaps inside the dark-themed pane. width 0 leaves content unchanged.
+//
+// Note: this does NOT seam internal \x1b[0m breaks left by glamour markdown
+// rendering. Adding that pass changes byte sequences in ways that break
+// downstream tests relying on bytes.Contains over the unseamed output, so
+// it is intentionally left for callers that need it.
+func padLinesWithBg(s string, w int, st styles.Styles) string {
+	if w <= 0 {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = st.App.Width(w).Render(line)
+	}
+	return strings.Join(lines, "\n")
 }

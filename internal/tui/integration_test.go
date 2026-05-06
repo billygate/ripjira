@@ -3,6 +3,7 @@ package tui_test
 import (
 	"bytes"
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +16,31 @@ import (
 	"github.com/billygate/ripjira/internal/tui/panes"
 	"github.com/billygate/ripjira/internal/tui/themes"
 )
+
+// stripANSI removes ANSI CSI sequences so tests can assert on plain text.
+// Mirror of the helper in app_test.go (different package, can't import).
+func stripANSI(s string) string {
+	var out strings.Builder
+	out.Grow(len(s))
+	in := []byte(s)
+	for i := 0; i < len(in); i++ {
+		if in[i] == 0x1b && i+1 < len(in) && in[i+1] == '[' {
+			j := i + 2
+			for j < len(in) {
+				c := in[j]
+				if (c >= 0x40 && c <= 0x7e) || c == 'm' {
+					j++
+					break
+				}
+				j++
+			}
+			i = j - 1
+			continue
+		}
+		out.WriteByte(in[i])
+	}
+	return out.String()
+}
 
 // stubLoader is the AppLoader used by the end-to-end teatest. Each method
 // drains a per-key channel (or a default channel for LoadIssues) so the test
@@ -348,7 +374,7 @@ func TestStage2_EndToEnd(t *testing.T) {
 	// Transitions are no longer rendered in the detail pane (the status
 	// overlay owns that UI), so the freshness signal is just the description.
 	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
-		return bytes.Contains(b, []byte("Real description for PROJ-1"))
+		return strings.Contains(stripANSI(string(b)), "Real description for PROJ-1")
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -469,7 +495,7 @@ func TestEpicPicker_EndToEnd(t *testing.T) {
 	loader.transitions("BILLING-1") <- transitionsResult{}
 
 	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
-		return bytes.Contains(b, []byte("Body for BILLING-1"))
+		return strings.Contains(stripANSI(string(b)), "Body for BILLING-1")
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Open the epic picker.
@@ -477,8 +503,9 @@ func TestEpicPicker_EndToEnd(t *testing.T) {
 
 	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
 		s := b
-		return bytes.Contains(s, []byte("Epic · BILLING-1")) &&
-			bytes.Contains(s, []byte("Setup deploy"))
+		stripped := stripANSI(string(s))
+		return strings.Contains(stripped, "Epic · BILLING-1") &&
+			strings.Contains(stripped, "Setup deploy")
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	// Pick BILLING-100 (the only row, cursor=0).
