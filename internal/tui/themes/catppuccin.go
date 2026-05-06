@@ -14,8 +14,8 @@ func Catppuccin() Palette { return catppuccin{} }
 func (catppuccin) Name() string { return "catppuccin-mocha" }
 
 func (catppuccin) Bg() lipgloss.Color      { return lipgloss.Color("#1e1e2e") }
-func (catppuccin) Fg() lipgloss.Color      { return lipgloss.Color("#cdd6f4") }
-func (catppuccin) Accent() lipgloss.Color  { return lipgloss.Color("#cba6f7") }
+func (catppuccin) Fg() lipgloss.Color      { return lipgloss.Color("#a6adc8") }
+func (catppuccin) Accent() lipgloss.Color  { return lipgloss.Color("#b4befe") }
 func (catppuccin) Muted() lipgloss.Color   { return lipgloss.Color("#6c7086") }
 func (catppuccin) Red() lipgloss.Color     { return lipgloss.Color("#f38ba8") }
 func (catppuccin) Green() lipgloss.Color   { return lipgloss.Color("#a6e3a1") }
