@@ -1881,7 +1881,8 @@ func (m Model) handleWorklogDeleteDone(msg worklogDeletedDoneMsg) (tea.Model, te
 	toast := func() tea.Msg {
 		return ToastMsg{Text: "Worklog removed", Level: ToastInfo}
 	}
-	return m, tea.Batch(stopSpinner, toast)
+	reload := m.reloadDetailIfMatches(msg.IssueKey)
+	return m, tea.Batch(stopSpinner, toast, reload)
 }
 
 // openWorklogOverlay opens the log-work overlay for the selected issue.
@@ -1933,7 +1934,8 @@ func (m Model) handleWorklogDone(msg worklogDoneMsg) (tea.Model, tea.Cmd) {
 			Level: ToastInfo,
 		}
 	}
-	return m, tea.Batch(stopSpinner, toast)
+	reload := m.reloadDetailIfMatches(msg.IssueKey)
+	return m, tea.Batch(stopSpinner, toast, reload)
 }
 
 // openPriorityPicker opens the priority picker for the current issue
@@ -1959,6 +1961,22 @@ func (m Model) handlePrioritySelected(msg overlays.PrioritySelectedMsg) (tea.Mod
 		Field:    overlays.EditPriority,
 		Value:    msg.Name,
 	})
+}
+
+// reloadDetailIfMatches returns a Reload command for the detail pane when it
+// currently shows key, otherwise nil. Called after mutation success messages
+// so subsequent overlays (transitions list, comments list) see fresh data
+// without flashing a "Loading…" placeholder. Pointer receiver because
+// Detail.Reload mutates state (bumps token, replaces cancel func).
+func (m *Model) reloadDetailIfMatches(key string) tea.Cmd {
+	if key == "" {
+		return nil
+	}
+	cur := m.detail.Issue()
+	if cur == nil || cur.Key != key {
+		return nil
+	}
+	return m.detail.Reload()
 }
 
 // shouldOfferEpicLink reports whether the create wizard should advance to
@@ -2110,7 +2128,8 @@ func (m Model) handleSetParentDone(msg setParentDoneMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(stopSpinner, toast)
 	}
-	return m, stopSpinner
+	reload := m.reloadDetailIfMatches(msg.IssueKey)
+	return m, tea.Batch(stopSpinner, reload)
 }
 
 // openDescriptionOverlay opens the description-edit textarea, prefilled
@@ -2275,7 +2294,8 @@ func (m Model) handleLinkDeleteDone(msg linkDeletedDoneMsg) (tea.Model, tea.Cmd)
 			Level: ToastInfo,
 		}
 	}
-	return m, tea.Batch(stopSpinner, toast)
+	reload := m.reloadDetailIfMatches(msg.IssueKey)
+	return m, tea.Batch(stopSpinner, toast, reload)
 }
 
 // openLinkOverlay opens the add-link overlay scoped to the currently
@@ -2353,7 +2373,8 @@ func (m Model) handleLinkDone(msg linkDoneMsg) (tea.Model, tea.Cmd) {
 			Level: ToastInfo,
 		}
 	}
-	return m, tea.Batch(stopSpinner, toast)
+	reload := m.reloadDetailIfMatches(msg.IssueKey)
+	return m, tea.Batch(stopSpinner, toast, reload)
 }
 
 // openFavoritesOverlay reads the saved favorites from disk and opens the
@@ -2640,7 +2661,8 @@ func (m Model) handleEditDone(msg editDoneMsg) (tea.Model, tea.Cmd) {
 		toast := func() tea.Msg {
 			return ToastMsg{Text: "Updated " + msg.Field.FieldName(), Level: ToastInfo}
 		}
-		return m, tea.Batch(stopSpinner, toast)
+		reload := m.reloadDetailIfMatches(msg.IssueKey)
+		return m, tea.Batch(stopSpinner, toast, reload)
 	}
 	switch msg.Field {
 	case overlays.EditSummary:
@@ -2819,7 +2841,8 @@ func (m Model) handleAssignDone(msg assignDoneMsg) (tea.Model, tea.Cmd) {
 	toast := func() tea.Msg {
 		return ToastMsg{Text: "Assigned to " + msg.NewAssignee.DisplayName, Level: ToastInfo}
 	}
-	return m, tea.Batch(stopSpinner, toast)
+	reload := m.reloadDetailIfMatches(msg.IssueKey)
+	return m, tea.Batch(stopSpinner, toast, reload)
 }
 
 // assignSearchDoneMsg wraps an AssignResultsMsg so the root model can
@@ -2865,7 +2888,8 @@ func (m Model) handleCommentDone(msg commentDoneMsg) (tea.Model, tea.Cmd) {
 	})
 	m.clearDraft(msg.IssueKey)
 	toast := func() tea.Msg { return ToastMsg{Text: "Comment added", Level: ToastInfo} }
-	return m, tea.Batch(stopSpinner, toast)
+	reload := m.reloadDetailIfMatches(msg.IssueKey)
+	return m, tea.Batch(stopSpinner, toast, reload)
 }
 
 // handleTransitionSelected applies an optimistic status change to the list
@@ -2907,7 +2931,8 @@ func (m Model) handleTransitionSelected(msg overlays.TransitionSelectedMsg) (tea
 func (m Model) handleTransitionDone(msg transitionDoneMsg) (tea.Model, tea.Cmd) {
 	stopSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: -1} }
 	if msg.Err == nil {
-		return m, stopSpinner
+		reload := m.reloadDetailIfMatches(msg.IssueKey)
+		return m, tea.Batch(stopSpinner, reload)
 	}
 	m.list.UpdateIssueStatus(msg.IssueKey, msg.PrevStatus)
 	m.detail.UpdateStatus(msg.IssueKey, msg.PrevStatus)

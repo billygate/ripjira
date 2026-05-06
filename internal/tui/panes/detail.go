@@ -417,6 +417,41 @@ func (d *Detail) SetIssue(issue *jira.Issue) tea.Cmd {
 	)
 }
 
+// Reload refetches issue / comments / transitions for the currently displayed
+// issue without clearing what is on screen. Any in-flight load is cancelled
+// (the token bump drops late results), so successive Reload calls are safe.
+// Returns nil when no issue is currently displayed.
+func (d *Detail) Reload() tea.Cmd {
+	if d.issue == nil {
+		return nil
+	}
+	if d.cancel != nil {
+		d.cancel()
+		d.cancel = nil
+	}
+	d.token++
+	ctx, cancel := context.WithCancel(context.Background())
+	d.ctx = ctx
+	d.cancel = cancel
+	key := d.issue.Key
+	token := d.token
+	loader := d.loader
+	return tea.Batch(
+		func() tea.Msg {
+			is, err := loader.LoadIssue(ctx, key)
+			return IssueLoadedMsg{Key: key, Token: token, Issue: is, Err: err}
+		},
+		func() tea.Msg {
+			cs, err := loader.LoadComments(ctx, key)
+			return CommentsLoadedMsg{Key: key, Token: token, Comments: cs, Err: err}
+		},
+		func() tea.Msg {
+			ts, err := loader.LoadTransitions(ctx, key)
+			return TransitionsLoadedMsg{Key: key, Token: token, Transitions: ts, Err: err}
+		},
+	)
+}
+
 // JumpToComment scrolls the viewport to the n-th rendered comment
 // (1-based). Out-of-range n is a no-op.
 func (d *Detail) JumpToComment(n int) {
