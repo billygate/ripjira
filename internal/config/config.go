@@ -42,11 +42,12 @@ const (
 	GroupingEpic     = "epic"
 	GroupingParent   = "parent"
 
-	ThemeTokyoNight = "tokyonight"
-	ThemeCatppuccin = "catppuccin"
-	ThemeGruvbox    = "gruvbox"
-	ThemeNord       = "nord"
-	ThemeRosePine   = "rosepine"
+	ThemeTokyoNight      = "tokyonight"
+	ThemeCatppuccin      = "catppuccin"
+	ThemeCatppuccinMocha = "catppuccin-mocha"
+	ThemeGruvbox         = "gruvbox"
+	ThemeNord            = "nord"
+	ThemeRosePine        = "rosepine"
 
 	IconsUnicode = "unicode"
 	IconsASCII   = "ascii"
@@ -60,11 +61,12 @@ var (
 		GroupingParent:   true,
 	}
 	validThemes = map[string]bool{
-		ThemeTokyoNight: true,
-		ThemeCatppuccin: true,
-		ThemeGruvbox:    true,
-		ThemeNord:       true,
-		ThemeRosePine:   true,
+		ThemeTokyoNight:      true,
+		ThemeCatppuccin:      true, // alias, kept for older configs
+		ThemeCatppuccinMocha: true,
+		ThemeGruvbox:         true,
+		ThemeNord:            true,
+		ThemeRosePine:        true,
 	}
 	validIcons = map[string]bool{IconsUnicode: true, IconsASCII: true}
 
