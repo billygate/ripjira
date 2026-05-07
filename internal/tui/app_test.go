@@ -1470,6 +1470,67 @@ func TestSettingsAppliedRebuildsTheme(t *testing.T) {
 	}
 }
 
+func TestSettingsSaveErrorReopensOverlay(t *testing.T) {
+	cfg := config.Config{
+		BaseURL:            "https://x.atlassian.net",
+		Email:              "a@b.c",
+		Theme:              config.ThemeTokyoNight,
+		Icons:              config.IconsUnicode,
+		DefaultGrouping:    config.GroupingStatus,
+		AutoRefreshSeconds: 60,
+		EpicIssueTypes:     []string{"Epic"},
+	}
+	// Build a path where the parent does not exist AND cannot be created
+	// (creating a directory under a regular file fails).
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	badPath := filepath.Join(blocker, "config.yaml")
+
+	m := New(themes.TokyoNight(), WithConfig(cfg), WithConfigPath(badPath))
+	newCfg := cfg
+	newCfg.Theme = config.ThemeNord
+
+	updated, cmd := m.Update(overlays.SettingsAppliedMsg{NewCfg: newCfg})
+	if cmd == nil {
+		t.Fatal("expected save cmd")
+	}
+	// Resolve cmd into a SettingsSaveErrorMsg. The cmd may be a single
+	// function or a tea.BatchMsg of cmds.
+	msg := cmd()
+	var errMsg SettingsSaveErrorMsg
+	var found bool
+	switch v := msg.(type) {
+	case SettingsSaveErrorMsg:
+		errMsg, found = v, true
+	case tea.BatchMsg:
+		for _, c := range v {
+			if c == nil {
+				continue
+			}
+			if e, ok := c().(SettingsSaveErrorMsg); ok {
+				errMsg, found = e, true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected SettingsSaveErrorMsg in cmd output, got %T", msg)
+	}
+
+	// Now feed the error back into the model.
+	mm := updated.(Model)
+	afterErr, _ := mm.Update(errMsg)
+	am := afterErr.(Model)
+	if !am.settings.Visible() {
+		t.Fatal("settings overlay should be re-opened on save error")
+	}
+	if am.settings.Draft().Theme != config.ThemeNord {
+		t.Fatal("draft should preserve user's pending theme change")
+	}
+}
+
 func TestSettingsCancelledIsNoop(t *testing.T) {
 	cfg := config.Config{
 		BaseURL:            "https://x.atlassian.net",
