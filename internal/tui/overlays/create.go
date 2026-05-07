@@ -148,6 +148,7 @@ type Create struct {
 	parentKey            string
 	subtaskMode          bool
 	currentUserAccountID string
+	defaultPriority      string
 }
 
 // metaCacheKey builds the key used to look up cached createmeta results.
@@ -186,6 +187,14 @@ func NewCreate(closeKey key.Binding, currentUserAccountID string) Create {
 // Call this after the bootstrap finishes and the account ID becomes available.
 func (c Create) SetCurrentUserAccountID(id string) Create {
 	c.currentUserAccountID = id
+	return c
+}
+
+// SetDefaultPriority returns a copy of c with the priority-name default set.
+// Empty string disables the override and BuildForm leaves the priority
+// field's cursor at its zero value (Jira's first allowedValue).
+func (c Create) SetDefaultPriority(name string) Create {
+	c.defaultPriority = name
 	return c
 }
 
@@ -532,7 +541,10 @@ func (c Create) updateTypeStep(msg tea.Msg) (Create, tea.Cmd) {
 		c.mode = createStepFields
 		c.typeInput.Blur()
 		if meta, hit := c.metaCache[metaCacheKey(projectKey, sel.ID)]; hit {
-			c.form = BuildForm(meta, FormDefaults{CurrentUserAccountID: c.currentUserAccountID})
+			c.form = BuildForm(meta, FormDefaults{
+				CurrentUserAccountID: c.currentUserAccountID,
+				DefaultPriorityName:  c.defaultPriority,
+			})
 			c.formLoading = false
 			c.formErr = nil
 			c.formReady = true
@@ -732,7 +744,10 @@ func (c Create) handleMetaLoadedMsg(m CreateMetaLoadedMsg) Create {
 		return c
 	}
 	c.formErr = nil
-	c.form = BuildForm(m.Meta, FormDefaults{CurrentUserAccountID: c.currentUserAccountID})
+	c.form = BuildForm(m.Meta, FormDefaults{
+		CurrentUserAccountID: c.currentUserAccountID,
+		DefaultPriorityName:  c.defaultPriority,
+	})
 	c.formReady = true
 	return c
 }

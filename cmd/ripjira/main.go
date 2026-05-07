@@ -414,6 +414,7 @@ func runTUI(cfg *config.Config, client *jira.Client, _, _ io.Writer) error {
 		tui.WithLoader(tui.NewCachingLoader(tui.NewClientLoader(client))),
 		tui.WithCachePath(cachePath),
 		tui.WithDefaultProject(cfg.DefaultProject),
+		tui.WithDefaultPriority(cfg.DefaultPriority),
 		tui.WithEpicTypes(cfg.EpicIssueTypes),
 		tui.WithCustomFields(cfg.CustomFields),
 		tui.WithConfig(*cfg),

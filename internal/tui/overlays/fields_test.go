@@ -60,6 +60,47 @@ func sampleMeta() jira.CreateMeta {
 	}}
 }
 
+func TestBuildForm_DefaultPriorityName_PreselectsOption(t *testing.T) {
+	form := BuildForm(sampleMeta(), FormDefaults{DefaultPriorityName: "Low"})
+	for _, f := range form.Fields {
+		if f.Meta.ID != "priority" {
+			continue
+		}
+		if got := f.Value(); got != "3" {
+			t.Fatalf("priority Value = %q, want %q (id of Low)", got, "3")
+		}
+		return
+	}
+	t.Fatal("no priority field in form")
+}
+
+func TestBuildForm_DefaultPriorityName_CaseInsensitive(t *testing.T) {
+	form := BuildForm(sampleMeta(), FormDefaults{DefaultPriorityName: "lOw"})
+	for _, f := range form.Fields {
+		if f.Meta.ID == "priority" && f.Value() != "3" {
+			t.Fatalf("case-insensitive match failed; Value = %q", f.Value())
+		}
+	}
+}
+
+func TestBuildForm_DefaultPriorityName_UnknownNoOp(t *testing.T) {
+	form := BuildForm(sampleMeta(), FormDefaults{DefaultPriorityName: "Critical"})
+	for _, f := range form.Fields {
+		if f.Meta.ID == "priority" && f.Value() != "1" {
+			t.Fatalf("unknown name should leave cursor at 0; got Value %q", f.Value())
+		}
+	}
+}
+
+func TestBuildForm_DefaultPriorityName_EmptyNoOp(t *testing.T) {
+	form := BuildForm(sampleMeta(), FormDefaults{})
+	for _, f := range form.Fields {
+		if f.Meta.ID == "priority" && f.Value() != "1" {
+			t.Fatalf("empty default should leave cursor at 0; got Value %q", f.Value())
+		}
+	}
+}
+
 func TestBuildForm_DropsUnknownFieldsWithWarnings(t *testing.T) {
 	form := BuildForm(sampleMeta(), FormDefaults{})
 	if got, want := len(form.Fields), 7; got != want {
