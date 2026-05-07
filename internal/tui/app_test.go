@@ -1557,13 +1557,49 @@ func TestSettingsSaveErrorReopensOverlay(t *testing.T) {
 
 	// Now feed the error back into the model.
 	mm := updated.(Model)
-	afterErr, _ := mm.Update(errMsg)
+	afterErr, toastCmd := mm.Update(errMsg)
 	am := afterErr.(Model)
 	if !am.settings.Visible() {
 		t.Fatal("settings overlay should be re-opened on save error")
 	}
 	if am.settings.Draft().Theme != config.ThemeNord {
 		t.Fatal("draft should preserve user's pending theme change")
+	}
+	if toastCmd == nil {
+		t.Fatal("save error handler must return a toast cmd")
+	}
+	tm, ok := toastCmd().(ToastMsg)
+	if !ok {
+		t.Fatalf("expected ToastMsg, got %T", toastCmd())
+	}
+	if tm.Level != ToastError {
+		t.Fatalf("toast level = %v, want ToastError", tm.Level)
+	}
+}
+
+// TestSettingsAppliedDropsAllEpicTypes verifies that deleting every epic
+// issue type via the sub-overlay propagates into m.epicTypes, not just into
+// m.cfg, so the parent-grouping strategy reflects the change immediately.
+func TestSettingsAppliedDropsAllEpicTypes(t *testing.T) {
+	cfg := config.Config{
+		BaseURL:            "https://x.atlassian.net",
+		Email:              "a@b.c",
+		Theme:              config.ThemeTokyoNight,
+		Icons:              config.IconsUnicode,
+		DefaultGrouping:    config.GroupingStatus,
+		AutoRefreshSeconds: 60,
+		EpicIssueTypes:     []string{"Epic", "Epic Feature"},
+	}
+	m := New(themes.TokyoNight(), WithConfig(cfg))
+	if got := len(m.epicTypes); got == 0 {
+		t.Fatalf("seed: m.epicTypes empty, want non-empty")
+	}
+	newCfg := cfg
+	newCfg.EpicIssueTypes = nil
+	updated, _ := m.Update(overlays.SettingsAppliedMsg{NewCfg: newCfg})
+	mm := updated.(Model)
+	if len(mm.epicTypes) != 0 {
+		t.Fatalf("m.epicTypes = %v, want empty after deleting all entries", mm.epicTypes)
 	}
 }
 

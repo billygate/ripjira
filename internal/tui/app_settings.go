@@ -41,9 +41,10 @@ func (m Model) handleSettingsApplied(msg overlays.SettingsAppliedMsg) (Model, te
 		}
 	}
 
-	if len(newCfg.EpicIssueTypes) > 0 {
-		m.epicTypes = append(m.epicTypes[:0], newCfg.EpicIssueTypes...)
-	}
+	// Always sync — including the empty-list case — so deleting every epic
+	// type in the sub-overlay actually drops them from the parent-grouping
+	// strategy without waiting for a restart.
+	m.epicTypes = append([]string(nil), newCfg.EpicIssueTypes...)
 
 	m.cfg = newCfg
 
