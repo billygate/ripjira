@@ -1362,6 +1362,22 @@ func TestModelStoresConfig(t *testing.T) {
 	}
 }
 
+func TestSettingsOverlayShows(t *testing.T) {
+	cfg := config.Config{
+		BaseURL:            "https://x.atlassian.net",
+		Email:              "a@b.c",
+		Theme:              config.ThemeTokyoNight,
+		Icons:              config.IconsUnicode,
+		DefaultGrouping:    config.GroupingStatus,
+		AutoRefreshSeconds: 60,
+	}
+	m := New(themes.TokyoNight(), WithConfig(cfg))
+	m.settings = m.settings.Show(cfg)
+	if !m.settings.Visible() {
+		t.Fatal("settings should be visible after Show()")
+	}
+}
+
 func TestIssueKeyInGroupRe(t *testing.T) {
 	cases := []struct {
 		in, want string

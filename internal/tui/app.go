@@ -74,6 +74,7 @@ type Model struct {
 	epicPicker    overlays.Epic
 	structPicker  overlays.Structures
 	scopeEditor   overlays.ScopeEditor
+	settings      overlays.Settings
 	topGo         overlays.TopGo
 	created       overlays.Created
 
@@ -206,6 +207,7 @@ func New(p themes.Palette, opts ...Option) Model {
 		epicPicker:    overlays.NewEpic(),
 		structPicker:  overlays.NewStructures(km.CloseOverlay),
 		scopeEditor:   overlays.NewScopeEditor(km.CloseOverlay),
+		settings:      overlays.NewSettings(km.CloseOverlay),
 		topGo:         overlays.NewTopGo(km.CloseOverlay),
 		created:       overlays.NewCreated(km.CopyKey, km.CopyURL, km.Browser, km.CloseOverlay),
 		list:          panes.New(st, grouping.ByStatus{}, 1, 1),

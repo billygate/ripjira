@@ -26,7 +26,8 @@ func (m Model) canArmQuit() bool {
 		m.edit.Visible() || m.favorites.Visible() || m.link.Visible() ||
 		m.linkRemove.Visible() || m.worklog.Visible() || m.worklogRemove.Visible() ||
 		m.description.Visible() || m.priority.Visible() ||
-		m.epicPicker.Visible() || m.structPicker.Visible() || m.scopeEditor.Visible() || m.topGo.Visible() ||
+		m.epicPicker.Visible() || m.structPicker.Visible() || m.scopeEditor.Visible() ||
+		m.settings.Visible() || m.topGo.Visible() ||
 		m.created.Visible() {
 		return false
 	}
@@ -141,6 +142,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.topGo.Visible() {
 		var cmd tea.Cmd
 		m.topGo, cmd = m.topGo.Update(msg)
+		return m, cmd
+	}
+	if m.settings.Visible() {
+		var cmd tea.Cmd
+		m.settings, cmd = m.settings.Update(msg)
 		return m, cmd
 	}
 	// While the list pane's search input is being edited, the input must
@@ -271,6 +277,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			desc = d
 		}
 		m.options = m.options.Show(cur, sortName, desc)
+		return m, nil
+	case key.Matches(msg, m.keymap.Settings):
+		m.settings = m.settings.Show(m.cfg)
 		return m, nil
 	}
 

@@ -180,6 +180,9 @@ func (m Model) activeOverlay() string {
 	if v := m.options.View(m.styles); v != "" {
 		return v
 	}
+	if v := m.settings.View(m.styles); v != "" {
+		return v
+	}
 	if v := m.edit.View(m.styles); v != "" {
 		return v
 	}
