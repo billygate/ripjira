@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/muesli/termenv"
 
+	"github.com/billygate/ripjira/internal/config"
 	"github.com/billygate/ripjira/internal/jira"
 	"github.com/billygate/ripjira/internal/state"
 	"github.com/billygate/ripjira/internal/structure"
@@ -1336,6 +1337,28 @@ func TestApp_ScopeSaved_PersistsToStore(t *testing.T) {
 	}
 	if len(got.Scope) == 0 || len(got.Scope["labels"].In) == 0 || got.Scope["labels"].In[0] != "Q12026" {
 		t.Fatalf("scope not persisted: %#v", got.Scope)
+	}
+}
+
+func TestModelStoresConfig(t *testing.T) {
+	cfg := config.Config{
+		BaseURL: "https://x.atlassian.net",
+		Email:   "a@b.c",
+		Theme:   config.ThemeTokyoNight,
+		Icons:   config.IconsUnicode,
+		DefaultGrouping:    config.GroupingStatus,
+		AutoRefreshSeconds: 60,
+		EpicIssueTypes: []string{"Epic"},
+	}
+	m := New(themes.TokyoNight(),
+		WithConfig(cfg),
+		WithConfigPath("/tmp/ripjira-test.yaml"),
+	)
+	if got := m.Config(); got.Theme != cfg.Theme {
+		t.Fatalf("Config().Theme = %q, want %q", got.Theme, cfg.Theme)
+	}
+	if got := m.ConfigPath(); got != "/tmp/ripjira-test.yaml" {
+		t.Fatalf("ConfigPath = %q, want /tmp/ripjira-test.yaml", got)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/billygate/ripjira/internal/config"
 	"github.com/billygate/ripjira/internal/jira"
 	"github.com/billygate/ripjira/internal/state"
 	"github.com/billygate/ripjira/internal/structure"
@@ -94,6 +95,9 @@ type Model struct {
 	epicTypes      []string
 	customFields   map[string]string
 	initialIssues  []jira.Issue
+
+	cfg     config.Config
+	cfgPath string
 
 	assignDebounce    time.Duration
 	assignDebounceSet bool
@@ -294,6 +298,15 @@ func (m Model) Focused() Focus { return m.focus }
 
 // SetStatus replaces the top-bar status text.
 func (m *Model) SetStatus(s string) { m.statusText = s }
+
+// Config returns the in-memory configuration. Mutations should go through
+// the Settings overlay flow which keeps cfg, palette, styles, and the
+// auto-refresh timer in sync.
+func (m Model) Config() config.Config { return m.cfg }
+
+// ConfigPath returns the on-disk path of config.yaml; the empty string
+// disables persistence (useful in tests).
+func (m Model) ConfigPath() string { return m.cfgPath }
 
 // Toasts returns the current toast queue (mostly for tests).
 func (m Model) Toasts() Toasts { return m.toasts }

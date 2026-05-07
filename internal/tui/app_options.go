@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/billygate/ripjira/internal/config"
 	"github.com/billygate/ripjira/internal/jira"
 	"github.com/billygate/ripjira/internal/structure"
 )
@@ -123,4 +124,23 @@ func WithStructures(ctx context.Context, store *structure.Store) Option {
 			m.structureEvents = events
 		}
 	}
+}
+
+// WithConfig seeds the root model with the loaded user configuration. The
+// Settings overlay edits a copy of this and emits SettingsAppliedMsg with
+// the new value when the user saves.
+func WithConfig(c config.Config) Option {
+	return func(m *Model) {
+		m.cfg = c
+		// Keep the legacy convenience copy in sync.
+		if len(c.EpicIssueTypes) > 0 {
+			m.epicTypes = append(m.epicTypes[:0], c.EpicIssueTypes...)
+		}
+	}
+}
+
+// WithConfigPath sets the on-disk YAML path Save writes to. Empty disables
+// persistence (tests).
+func WithConfigPath(path string) Option {
+	return func(m *Model) { m.cfgPath = path }
 }

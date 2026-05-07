@@ -409,12 +409,15 @@ func runTUI(cfg *config.Config, client *jira.Client, _, _ io.Writer) error {
 
 	cachePath, _ := tui.DefaultCachePath()
 
+	cfgPath, _ := config.DefaultPath()
 	opts := []tui.Option{
 		tui.WithLoader(tui.NewCachingLoader(tui.NewClientLoader(client))),
 		tui.WithCachePath(cachePath),
 		tui.WithDefaultProject(cfg.DefaultProject),
 		tui.WithEpicTypes(cfg.EpicIssueTypes),
 		tui.WithCustomFields(cfg.CustomFields),
+		tui.WithConfig(*cfg),
+		tui.WithConfigPath(cfgPath),
 	}
 	if statePath, err := state.DefaultPath(); err == nil {
 		opts = append(opts, tui.WithStatePath(statePath))
