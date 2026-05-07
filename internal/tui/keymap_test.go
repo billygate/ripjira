@@ -19,3 +19,14 @@ func TestKeymapSettingsBinding(t *testing.T) {
 	}
 	t.Fatal("Settings binding not in All()")
 }
+
+func TestKeymap_EditExternalBindsCtrlE(t *testing.T) {
+	km := DefaultKeymap()
+	if !km.EditExternal.Enabled() {
+		t.Fatal("EditExternal should be enabled by default")
+	}
+	keys := km.EditExternal.Keys()
+	if len(keys) != 1 || keys[0] != "ctrl+e" {
+		t.Fatalf("EditExternal keys: got %v want [ctrl+e]", keys)
+	}
+}

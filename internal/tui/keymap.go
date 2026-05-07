@@ -41,6 +41,7 @@ type Keymap struct {
 	EditDueDate        key.Binding
 	EditDescription    key.Binding
 	EditEpic           key.Binding
+	EditExternal       key.Binding
 	OpenTopGo          key.Binding
 	OpenStructures     key.Binding
 	EditStructures     key.Binding
@@ -185,6 +186,10 @@ func DefaultKeymap() Keymap {
 			key.WithKeys("E"),
 			key.WithHelp("E", "set epic"),
 		),
+		EditExternal: key.NewBinding(
+			key.WithKeys("ctrl+e"),
+			key.WithHelp("ctrl+e", "edit summary+body in $EDITOR"),
+		),
 		OpenTopGo: key.NewBinding(
 			key.WithKeys("g"),
 			key.WithHelp("g", "go to top tab"),
@@ -259,7 +264,7 @@ func (k Keymap) ShortHelp() []key.Binding {
 func (k Keymap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.CycleFocusForward, k.CycleFocusBackward, k.NextTab, k.PrevTab, k.FocusLeft, k.FocusRight, k.Top, k.Bottom, k.ToggleGroup, k.OpenSearch, k.OpenOptions},
-		{k.Open, k.Status, k.Assign, k.Comment, k.New, k.NewSubtask, k.Browser, k.CopyKey, k.CopyURL, k.Refresh},
+		{k.Open, k.Status, k.Assign, k.Comment, k.New, k.NewSubtask, k.Browser, k.CopyKey, k.CopyURL, k.Refresh, k.EditExternal},
 		{k.OpenTopGo, k.OpenStructures, k.EditStructures, k.NextSubView, k.PrevSubView},
 		{k.Settings, k.Help, k.CloseOverlay, k.Quit},
 	}
@@ -284,5 +289,6 @@ func (k Keymap) All() []key.Binding {
 		k.CopyKey, k.CopyURL,
 		k.Refresh, k.OpenSearch, k.OpenOptions, k.Settings, k.Help, k.CloseOverlay, k.Quit,
 		k.OpenTopGo, k.OpenStructures, k.EditStructures, k.NextSubView, k.PrevSubView,
+		k.EditExternal,
 	}
 }

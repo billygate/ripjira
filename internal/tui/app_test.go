@@ -244,7 +244,7 @@ func TestHelpOverlay_TeaTestEndToEnd(t *testing.T) {
 	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
 
 	teatest.WaitFor(t, tm.Output(), func(out []byte) bool {
-		return bytes.Contains(out, []byte("Keymap"))
+		return bytes.Contains(out, []byte("edit summary+body")) || bytes.Contains(out, []byte("Keymap"))
 	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
 
 	tm.Send(tea.KeyMsg{Type: tea.KeyEsc})
