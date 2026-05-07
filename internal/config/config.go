@@ -17,6 +17,7 @@ type Config struct {
 	BaseURL            string   `yaml:"base_url"`
 	Email              string   `yaml:"email"`
 	DefaultProject     string   `yaml:"default_project,omitempty"`
+	DefaultPriority    string   `yaml:"default_priority,omitempty"`
 	DefaultGrouping    string   `yaml:"default_grouping"`
 	AutoRefreshSeconds int      `yaml:"auto_refresh_seconds"`
 	Theme              string   `yaml:"theme"`

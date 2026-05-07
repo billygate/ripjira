@@ -659,6 +659,12 @@ type Form struct {
 // (current user, etc.) rather than the static createmeta response.
 type FormDefaults struct {
 	CurrentUserAccountID string
+
+	// DefaultPriorityName, when non-empty, pre-selects the priority field's
+	// option whose Name matches (case-insensitive). If no such option is
+	// found in the createmeta allowedValues, the default cursor is left
+	// untouched.
+	DefaultPriorityName string
 }
 
 // reorderFields pulls summary then description to the front while preserving
@@ -727,6 +733,22 @@ func BuildForm(meta jira.CreateMeta, defaults FormDefaults) Form {
 				})
 				break
 			}
+		}
+	}
+
+	if want := strings.TrimSpace(defaults.DefaultPriorityName); want != "" {
+		for i := range form.Fields {
+			f := &form.Fields[i]
+			if f.Kind != FieldKindOption || f.Meta.ID != "priority" {
+				continue
+			}
+			for j, opt := range f.Meta.AllowedValues {
+				if strings.EqualFold(opt.Name, want) {
+					f.cursor = j
+					break
+				}
+			}
+			break
 		}
 	}
 

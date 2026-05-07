@@ -87,16 +87,17 @@ type Model struct {
 	list   panes.List
 	detail panes.Detail
 
-	loader         AppLoader
-	browser        BrowserOpener
-	cachePath      string
-	statePath      string
-	accountID      string
-	displayName    string
-	defaultProject string
-	epicTypes      []string
-	customFields   map[string]string
-	initialIssues  []jira.Issue
+	loader          AppLoader
+	browser         BrowserOpener
+	cachePath       string
+	statePath       string
+	accountID       string
+	displayName     string
+	defaultProject  string
+	defaultPriority string
+	epicTypes       []string
+	customFields    map[string]string
+	initialIssues   []jira.Issue
 
 	cfg     config.Config
 	cfgPath string
@@ -236,6 +237,9 @@ func New(p themes.Palette, opts ...Option) Model {
 	}
 	if m.assignDebounceSet {
 		m.assign = overlays.NewAssign(km.CloseOverlay, m.assignDebounce)
+	}
+	if m.defaultPriority != "" {
+		m.create = m.create.SetDefaultPriority(m.defaultPriority)
 	}
 	if m.loader != nil {
 		m.detail = panes.NewDetail(st, m.loader, 1, 1)

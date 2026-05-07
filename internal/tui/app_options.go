@@ -55,6 +55,13 @@ func WithDefaultProject(s string) Option {
 	return func(m *Model) { m.defaultProject = s }
 }
 
+// WithDefaultPriority pre-selects the create wizard's priority field to the
+// option with this name (case-insensitive, e.g. "Low"). Empty string leaves
+// the priority cursor at Jira's first allowedValue.
+func WithDefaultPriority(s string) Option {
+	return func(m *Model) { m.defaultPriority = s }
+}
+
 // WithEpicTypes wires the configured epic-issue-type names so the "parent"
 // grouping strategy can distinguish epic rows from their children.
 func WithEpicTypes(types []string) Option {
