@@ -312,7 +312,7 @@ func (f Field) Update(msg tea.Msg) (Field, tea.Cmd) {
 		if k.String() == "enter" || k.String() == "e" {
 			body := f.body
 			return f, func() tea.Msg {
-				return openExternalEditorRequestMsg{body: body}
+				return OpenExternalEditorRequestMsg{Body: body}
 			}
 		}
 		return f, nil
@@ -503,12 +503,16 @@ func (f *Field) OnTextChanged() {
 	}
 }
 
-// openExternalEditorRequestMsg is emitted by a focused FieldKindExternalADF
-// row when the user requests the external editor. It is consumed by the
-// wizard, which combines it with the form's current summary value before
-// emitting the public CreateOpenEditorMsg.
-type openExternalEditorRequestMsg struct {
-	body string
+// OpenExternalEditorRequestMsg is emitted by a focused FieldKindExternalADF
+// row when the user requests the external editor. The root model forwards
+// it back to the visible Create overlay, which combines it with the form's
+// current summary value before emitting CreateOpenEditorMsg.
+//
+// It is exported so the root model's Update can route the message — Field
+// emits messages but the wizard's updateFieldsStep is what understands them
+// in context, so the message must travel through tea's event loop and back.
+type OpenExternalEditorRequestMsg struct {
+	Body string
 }
 
 // UserSearchRequestMsg is dispatched by a debounce timer; the create

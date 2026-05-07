@@ -578,6 +578,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleDescriptionSubmitted(msg)
 	case descriptionDoneMsg:
 		return m.handleDescriptionDone(msg)
+	case overlays.OpenExternalEditorRequestMsg:
+		// Field-level request bubbles up through tea's loop; route it back
+		// into the wizard, which knows the form's current summary value
+		// and emits CreateOpenEditorMsg.
+		var cmd tea.Cmd
+		m.create, cmd = m.create.Update(msg)
+		return m, cmd
 	case overlays.CreateOpenEditorMsg:
 		return m, editor.Open(editor.OpenSpec{
 			Summary: msg.Summary,

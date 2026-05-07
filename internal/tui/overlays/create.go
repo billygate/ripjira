@@ -606,14 +606,14 @@ func (c Create) updateFieldsStep(msg tea.Msg) (Create, tea.Cmd) {
 			}
 		}
 	}
-	if req, ok := msg.(openExternalEditorRequestMsg); ok {
+	if req, ok := msg.(OpenExternalEditorRequestMsg); ok {
 		c.pendingEditorToken++
 		title := "New issue"
 		if c.selectedType.Name != "" {
 			title = "New " + c.selectedType.Name
 		}
 		summary := c.formSummaryValue()
-		body := req.body
+		body := req.Body
 		token := c.pendingEditorToken
 		return c, func() tea.Msg {
 			return CreateOpenEditorMsg{
