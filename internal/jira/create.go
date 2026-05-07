@@ -170,7 +170,7 @@ func (c *Client) CreateIssue(ctx context.Context, p CreatePayload) (Issue, error
 		"summary":   p.Summary,
 	}
 	if p.Description != "" {
-		fields["description"] = textToADF(p.Description)
+		fields["description"] = markdownToADF(p.Description)
 	}
 	if p.Priority != "" {
 		fields["priority"] = map[string]string{"id": p.Priority}

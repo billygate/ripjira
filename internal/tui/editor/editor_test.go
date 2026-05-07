@@ -49,13 +49,26 @@ func runCmd(t *testing.T, c tea.Cmd) tea.Msg {
 	return c()
 }
 
+// fakeRunner builds a runEditor stub that pulls the temp-file path from the
+// exec.Cmd's args, lets the test mutate it (or return an error), and then
+// invokes the callback synchronously — all in the calling goroutine, exactly
+// the way the production tea.ExecProcess path completes via its own callback.
+func fakeRunner(fn func(path string) error) func(*exec.Cmd, func(error) tea.Msg) tea.Cmd {
+	return func(cmd *exec.Cmd, cb func(error) tea.Msg) tea.Cmd {
+		return func() tea.Msg {
+			path := cmd.Args[len(cmd.Args)-1]
+			return cb(fn(path))
+		}
+	}
+}
+
 func TestOpen_SuccessAppliesParse(t *testing.T) {
 	prevRun := runEditor
 	t.Cleanup(func() { runEditor = prevRun })
 
-	runEditor = func(path string) error {
+	runEditor = fakeRunner(func(path string) error {
 		return os.WriteFile(path, []byte("# New summary\n\nNew body line\n"), 0o600)
-	}
+	})
 
 	cmd := Open(OpenSpec{Summary: "Old", Body: "Old body", Title: "ABC-1", Token: 7})
 	msg := runCmd(t, cmd)
@@ -82,9 +95,9 @@ func TestOpen_NonZeroExitIsCancelled(t *testing.T) {
 	prevRun := runEditor
 	t.Cleanup(func() { runEditor = prevRun })
 
-	runEditor = func(_ string) error {
+	runEditor = fakeRunner(func(_ string) error {
 		return fakeExitErr(t, 1)
-	}
+	})
 
 	cmd := Open(OpenSpec{Token: 1})
 	msg := runCmd(t, cmd).(ClosedMsg)
@@ -101,7 +114,7 @@ func TestOpen_GenericErrorPropagates(t *testing.T) {
 	t.Cleanup(func() { runEditor = prevRun })
 
 	want := errors.New("spawn boom")
-	runEditor = func(_ string) error { return want }
+	runEditor = fakeRunner(func(_ string) error { return want })
 
 	cmd := Open(OpenSpec{Token: 2})
 	msg := runCmd(t, cmd).(ClosedMsg)
@@ -132,7 +145,7 @@ func TestOpen_BannerStrippedBeforeParse(t *testing.T) {
 	prevRun := runEditor
 	t.Cleanup(func() { runEditor = prevRun })
 
-	runEditor = func(path string) error {
+	runEditor = fakeRunner(func(path string) error {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
@@ -144,7 +157,7 @@ func TestOpen_BannerStrippedBeforeParse(t *testing.T) {
 			t.Errorf("temp file missing seeded H1: %q", string(data))
 		}
 		return nil
-	}
+	})
 
 	cmd := Open(OpenSpec{Summary: "Existing", Body: "Body", Title: "ABC-9"})
 	msg := runCmd(t, cmd).(ClosedMsg)

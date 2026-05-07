@@ -19,11 +19,17 @@ type EditorAdviceState interface {
 
 // EditorEnv abstracts the host environment so the advice command can be
 // unit-tested without invoking real binaries or depending on GOOS.
+//
+// BrewInstall returns the tea.Cmd that runs `brew install neovim`. The
+// production implementation uses tea.ExecProcess so the TUI suspends
+// cleanly for the duration of the install (which can take minutes); the
+// callback is invoked with the exec error (nil on success). Tests
+// typically return a sync cmd that records the call.
 type EditorEnv interface {
 	HasNvim() bool
 	HasBrew() bool
 	IsDarwin() bool
-	RunBrewInstall() error
+	BrewInstall(callback func(error) tea.Msg) tea.Cmd
 }
 
 // EditorInstallConfirmMsg asks the app to surface a Y/N modal asking
@@ -55,20 +61,20 @@ func EditorAdviceCmd(state EditorAdviceState, env EditorEnv) tea.Cmd {
 }
 
 // runBrewInstallCmd returns a tea.Cmd that runs the env's brew install
-// and emits a ToastMsg describing the outcome.
+// (suspending the TUI in production via tea.ExecProcess) and emits a
+// ToastMsg describing the outcome.
 func runBrewInstallCmd(env EditorEnv) tea.Cmd {
-	return func() tea.Msg {
-		if err := env.RunBrewInstall(); err != nil {
+	return env.BrewInstall(func(err error) tea.Msg {
+		if err != nil {
 			return ToastMsg{Text: "Install failed: " + err.Error(), Level: ToastError}
 		}
 		return ToastMsg{Text: "Neovim installed via Homebrew.", Level: ToastInfo}
-	}
+	})
 }
 
 // defaultEditorEnv is the production EditorEnv backed by exec.LookPath
-// and runtime.GOOS. Brew install runs synchronously, blocking the main
-// goroutine for the duration — Task 10 wraps this in a confirm-overlay
-// + suspend dance.
+// and runtime.GOOS. BrewInstall uses tea.ExecProcess to suspend the TUI
+// while the install runs.
 type defaultEditorEnv struct{}
 
 func (defaultEditorEnv) HasNvim() bool {
@@ -83,9 +89,9 @@ func (defaultEditorEnv) HasBrew() bool {
 
 func (defaultEditorEnv) IsDarwin() bool { return runtime.GOOS == "darwin" }
 
-func (defaultEditorEnv) RunBrewInstall() error {
+func (defaultEditorEnv) BrewInstall(callback func(error) tea.Msg) tea.Cmd {
 	cmd := exec.Command("brew", "install", "neovim")
-	return cmd.Run()
+	return tea.ExecProcess(cmd, callback)
 }
 
 // DefaultEditorEnv returns the production EditorEnv. Used by app bootstrap.

@@ -19,9 +19,11 @@ type fakeEditorEnv struct {
 func (f *fakeEditorEnv) HasNvim() bool  { return f.hasNvim }
 func (f *fakeEditorEnv) HasBrew() bool  { return f.hasBrew }
 func (f *fakeEditorEnv) IsDarwin() bool { return f.isDarwin }
-func (f *fakeEditorEnv) RunBrewInstall() error {
-	f.installed = true
-	return f.installErr
+func (f *fakeEditorEnv) BrewInstall(cb func(error) tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		f.installed = true
+		return cb(f.installErr)
+	}
 }
 
 type fakeAdviceState struct {

@@ -1738,6 +1738,23 @@ func TestEditorClosed_NoChangeNoCall(t *testing.T) {
 	}
 }
 
+func TestEditorClosed_EmptyParseTreatedAsCancel(t *testing.T) {
+	loader := newCaptureLoader()
+	m := newTestAppModelWithLoader(t, 120, 30, loader)
+	m.detail.SetIssue(&jira.Issue{Key: "ABC-1", Summary: "Old", Description: "Old body"})
+	m.editorToken = 1
+
+	// Parser returns no summary AND empty body → must not wipe the description.
+	_, cmd := m.Update(editor.ClosedMsg{Token: 1, Summary: "", Body: ""})
+	if cmd != nil {
+		drainCmds(t, m, cmd)
+	}
+	if loader.updateFieldsCalls+loader.updateDescCalls != 0 {
+		t.Errorf("empty parse must not mutate; got %d field calls / %d desc calls",
+			loader.updateFieldsCalls, loader.updateDescCalls)
+	}
+}
+
 func TestEditorClosed_CancelledIsSilent(t *testing.T) {
 	loader := newCaptureLoader()
 	m := newTestAppModelWithLoader(t, 120, 30, loader)

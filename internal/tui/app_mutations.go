@@ -915,6 +915,12 @@ func (m Model) handleEditorClosed(msg editor.ClosedMsg) (tea.Model, tea.Cmd) {
 	if msg.Cancelled {
 		return m, nil
 	}
+	// Parser yielded nothing (no H1 and empty body) — treat as cancel rather
+	// than wipe an existing description. The user likely closed the editor
+	// without saving, or accidentally cleared the buffer.
+	if msg.Summary == "" && msg.Body == "" {
+		return m, nil
+	}
 	issue := m.detail.Issue()
 	if issue == nil || m.loader == nil {
 		return m, nil

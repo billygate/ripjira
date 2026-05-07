@@ -44,62 +44,68 @@ var resolveEditor = func() string {
 	return ""
 }
 
-// runEditor is the exec seam. The default invokes the resolved binary with
-// stdio bound to the controlling terminal. Tests replace it with a fake
-// that mutates the temp file directly.
-var runEditor = func(path string) error {
-	bin := resolveEditor()
-	if bin == "" {
-		return errors.New("no editor found in $PATH (set $EDITOR or install nvim/vim)")
-	}
-	cmd := exec.Command(bin, path) //nolint:gosec // user-controlled by design
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+// runEditor is the test seam. The default uses tea.ExecProcess to suspend
+// the Bubble Tea program for the duration of the editor session — without
+// suspension the TUI and editor fight over the same terminal. Tests
+// substitute a fake that mutates the temp file directly and invokes the
+// callback synchronously.
+var runEditor = func(cmd *exec.Cmd, callback func(error) tea.Msg) tea.Cmd {
+	return tea.ExecProcess(cmd, callback)
 }
 
 // Open returns a tea.Cmd that creates a temp .md file seeded from spec,
-// invokes the editor, then parses the result into a ClosedMsg.
+// invokes the editor (via tea.ExecProcess so the TUI suspends cleanly),
+// then parses the result into a ClosedMsg.
 func Open(spec OpenSpec) tea.Cmd {
-	return func() tea.Msg {
-		if resolveEditor() == "" {
+	bin := resolveEditor()
+	if bin == "" {
+		return func() tea.Msg {
 			return ClosedMsg{
 				Token: spec.Token,
 				Err:   errors.New("no editor found in $PATH (set $EDITOR or install nvim/vim)"),
 			}
 		}
+	}
 
-		f, err := os.CreateTemp("", "ripjira-*.md")
-		if err != nil {
+	f, err := os.CreateTemp("", "ripjira-*.md")
+	if err != nil {
+		return func() tea.Msg {
 			return ClosedMsg{Token: spec.Token, Err: fmt.Errorf("create temp: %w", err)}
 		}
-		path := f.Name()
-		defer func() { _ = os.Remove(path) }()
+	}
+	path := f.Name()
 
-		if _, err := f.WriteString(buildSeed(spec)); err != nil {
-			_ = f.Close()
+	if _, err := f.WriteString(buildSeed(spec)); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return func() tea.Msg {
 			return ClosedMsg{Token: spec.Token, Err: fmt.Errorf("write seed: %w", err)}
 		}
-		if err := f.Close(); err != nil {
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(path)
+		return func() tea.Msg {
 			return ClosedMsg{Token: spec.Token, Err: fmt.Errorf("close seed: %w", err)}
 		}
+	}
 
-		if err := runEditor(path); err != nil {
+	cmd := exec.Command(bin, path) //nolint:gosec // user-controlled by design
+	return runEditor(cmd, func(execErr error) tea.Msg {
+		defer func() { _ = os.Remove(path) }()
+		if execErr != nil {
 			var exitErr *exec.ExitError
-			if errors.As(err, &exitErr) {
+			if errors.As(execErr, &exitErr) {
 				return ClosedMsg{Token: spec.Token, Cancelled: true}
 			}
-			return ClosedMsg{Token: spec.Token, Err: err}
+			return ClosedMsg{Token: spec.Token, Err: execErr}
 		}
-
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return ClosedMsg{Token: spec.Token, Err: fmt.Errorf("read result: %w", err)}
 		}
 		summary, body := SplitSummaryBody(string(data))
 		return ClosedMsg{Token: spec.Token, Summary: summary, Body: body}
-	}
+	})
 }
 
 // buildSeed assembles the temp-file contents we initially write. The banner
