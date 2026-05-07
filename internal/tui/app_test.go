@@ -1622,3 +1622,23 @@ func TestSettingsCancelledIsNoop(t *testing.T) {
 		t.Fatalf("expected nil cmd, got %T", cmd())
 	}
 }
+
+func TestKeymap_CtrlE_DispatchesEditorOpen_OnIssueScreen(t *testing.T) {
+	m := newTestAppModel(t, 120, 30)
+
+	m.detail.SetIssue(&jira.Issue{
+		Key:         "ABC-1",
+		Summary:     "Title",
+		Description: "Body markdown",
+	})
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
+	m = updated.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected a tea.Cmd from ctrl+e dispatch")
+	}
+	if m.editorToken == 0 {
+		t.Fatalf("editorToken not advanced after ctrl+e")
+	}
+}

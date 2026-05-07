@@ -125,6 +125,11 @@ type Model struct {
 	listToken  int
 	listCancel context.CancelFunc
 
+	// editorToken is incremented every time we dispatch an external editor
+	// flow. Stale ClosedMsg results (token mismatch) are dropped to keep
+	// rapid ctrl+e presses from clobbering the latest issue.
+	editorToken int
+
 	// recentlyCreated keeps a freshly-created issue alive in the visible list
 	// until Jira's eventually-consistent search index returns it for the
 	// active view's JQL. Cleared in handleListFetched once the server's

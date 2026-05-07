@@ -246,6 +246,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openDescriptionOverlay()
 	case key.Matches(msg, m.keymap.EditEpic):
 		return m.openEpicPicker()
+	case key.Matches(msg, m.keymap.EditExternal):
+		return m.openExternalEditor()
 	case key.Matches(msg, m.keymap.OpenTopGo):
 		return m.openTopGo()
 	case key.Matches(msg, m.keymap.OpenStructures):
