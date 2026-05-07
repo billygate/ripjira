@@ -16,7 +16,7 @@ func TestDetectFieldKind_SchemaTable(t *testing.T) {
 		want FieldKind
 	}{
 		{"summary string", jira.FieldMeta{ID: "summary", SchemaType: "string"}, FieldKindString},
-		{"description ADF", jira.FieldMeta{ID: "description", SchemaType: "string"}, FieldKindADF},
+		{"description ExternalADF", jira.FieldMeta{ID: "description", SchemaType: "string"}, FieldKindExternalADF},
 		{"option", jira.FieldMeta{ID: "customfield_1", SchemaType: "option"}, FieldKindOption},
 		{"priority", jira.FieldMeta{ID: "priority", SchemaType: "priority"}, FieldKindOption},
 		{"issuetype", jira.FieldMeta{ID: "issuetype", SchemaType: "issuetype"}, FieldKindOption},
@@ -96,7 +96,7 @@ func TestBuildForm_KindsMatchSchemaTable(t *testing.T) {
 	form := BuildForm(sampleMeta(), FormDefaults{})
 	want := []FieldKind{
 		FieldKindString,
-		FieldKindADF,
+		FieldKindExternalADF,
 		FieldKindOption,
 		FieldKindUser,
 		FieldKindMultiOption,
@@ -325,7 +325,7 @@ func TestField_PayloadValue_Shapes(t *testing.T) {
 		t.Errorf("string payload = %v", v)
 	}
 	if v, _ := form.Fields[1].PayloadValue(); v != "Body text" {
-		t.Errorf("adf payload = %v (string passthrough expected; ADF wrap done by client)", v)
+		t.Errorf("external-adf payload = %v (string passthrough expected; ADF wrap done by client)", v)
 	}
 	if v, _ := form.Fields[2].PayloadValue(); !mapHasKV(v, "id", "2") {
 		t.Errorf("option payload = %v, want {id:2}", v)
@@ -670,5 +670,67 @@ func TestField_UserTypingArmsDebounce(t *testing.T) {
 	}
 	if f.dropdown.token == initialToken {
 		t.Fatal("token should bump on each keystroke for cancel-on-supersede")
+	}
+}
+
+func TestDetectFieldKind_DescriptionIsExternalADF(t *testing.T) {
+	meta := jira.FieldMeta{ID: "description", SchemaType: "string"}
+	if got := detectFieldKind(meta); got != FieldKindExternalADF {
+		t.Fatalf("description: got %v want FieldKindExternalADF", got)
+	}
+}
+
+func TestDetectFieldKind_NonDescriptionStringStillString(t *testing.T) {
+	meta := jira.FieldMeta{ID: "custom_10001", SchemaType: "string"}
+	if got := detectFieldKind(meta); got != FieldKindString {
+		t.Fatalf("custom string: got %v want FieldKindString", got)
+	}
+}
+
+func TestField_ExternalADF_PayloadValue(t *testing.T) {
+	f := newField(jira.FieldMeta{ID: "description", SchemaType: "string"}, FieldKindExternalADF)
+	f = f.SetExternalBody("hello world")
+
+	v, ok := f.PayloadValue()
+	if !ok {
+		t.Fatal("expected payload value present")
+	}
+	if s, ok := v.(string); !ok || s != "hello world" {
+		t.Fatalf("payload: got %v", v)
+	}
+}
+
+func TestField_ExternalADF_EmptyOmitted(t *testing.T) {
+	f := newField(jira.FieldMeta{ID: "description"}, FieldKindExternalADF)
+	if _, ok := f.PayloadValue(); ok {
+		t.Fatal("empty body should be omitted from payload")
+	}
+}
+
+func TestField_ExternalADF_PreviewEmpty(t *testing.T) {
+	f := newField(jira.FieldMeta{ID: "description", Name: "Description"}, FieldKindExternalADF)
+	out := f.View(newStyles(t))
+	if !strings.Contains(out, "(empty") {
+		t.Errorf("expected empty placeholder, got %q", out)
+	}
+}
+
+func TestField_ExternalADF_PreviewMultiline(t *testing.T) {
+	f := newField(jira.FieldMeta{ID: "description", Name: "Description"}, FieldKindExternalADF)
+	f = f.SetExternalBody("first line\nsecond line")
+	out := f.View(newStyles(t))
+	if !strings.Contains(out, "first line") {
+		t.Errorf("preview should include first line, got %q", out)
+	}
+	if !strings.Contains(out, "2 lines") {
+		t.Errorf("preview should annotate line count, got %q", out)
+	}
+}
+
+func TestField_ExternalADF_Value_ReturnsBody(t *testing.T) {
+	f := newField(jira.FieldMeta{ID: "description"}, FieldKindExternalADF)
+	f = f.SetExternalBody("body content")
+	if got := f.Value(); got != "body content" {
+		t.Errorf("Value: got %q want %q", got, "body content")
 	}
 }
