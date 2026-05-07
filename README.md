@@ -94,6 +94,7 @@ ripjira login --reset   # delete the stored token first, then re-run
 | `g`                | open the top-tab picker overlay       |
 | `space`            | collapse / expand current group       |
 | `,`                | open Options (grouping + sort)        |
+| `ctrl+,`           | open Settings editor                  |
 | `/`                | filter list / open Search tab         |
 | `enter`            | open issue                            |
 | `s`                | change status (transition picker)     |

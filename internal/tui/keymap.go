@@ -52,6 +52,7 @@ type Keymap struct {
 	Unwatch            key.Binding
 	LogWork            key.Binding
 	RemoveWorklog      key.Binding
+	Settings           key.Binding
 	Help               key.Binding
 	CloseOverlay       key.Binding
 	Quit               key.Binding
@@ -228,6 +229,10 @@ func DefaultKeymap() Keymap {
 			key.WithKeys("ctrl+t"),
 			key.WithHelp("ctrl+t", "remove worklog"),
 		),
+		Settings: key.NewBinding(
+			key.WithKeys("ctrl+,"),
+			key.WithHelp("ctrl+,", "settings"),
+		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
 			key.WithHelp("?", "help"),
@@ -256,7 +261,7 @@ func (k Keymap) FullHelp() [][]key.Binding {
 		{k.Up, k.Down, k.CycleFocusForward, k.CycleFocusBackward, k.NextTab, k.PrevTab, k.FocusLeft, k.FocusRight, k.Top, k.Bottom, k.ToggleGroup, k.OpenSearch, k.OpenOptions},
 		{k.Open, k.Status, k.Assign, k.Comment, k.New, k.NewSubtask, k.Browser, k.CopyKey, k.CopyURL, k.Refresh},
 		{k.OpenTopGo, k.OpenStructures, k.EditStructures, k.NextSubView, k.PrevSubView},
-		{k.Help, k.CloseOverlay, k.Quit},
+		{k.Settings, k.Help, k.CloseOverlay, k.Quit},
 	}
 }
 
@@ -277,7 +282,7 @@ func (k Keymap) All() []key.Binding {
 		k.ToggleGroup, k.Open,
 		k.Status, k.Assign, k.Comment, k.New, k.NewSubtask, k.Browser,
 		k.CopyKey, k.CopyURL,
-		k.Refresh, k.OpenSearch, k.OpenOptions, k.Help, k.CloseOverlay, k.Quit,
+		k.Refresh, k.OpenSearch, k.OpenOptions, k.Settings, k.Help, k.CloseOverlay, k.Quit,
 		k.OpenTopGo, k.OpenStructures, k.EditStructures, k.NextSubView, k.PrevSubView,
 	}
 }
