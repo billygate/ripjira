@@ -168,3 +168,22 @@ func TestState_LastStructureRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip lost data: %#v", got.LastStructure)
 	}
 }
+
+func TestState_EditorAdviceShownRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+
+	if err := state.Mutate(path, func(s *state.State) {
+		s.EditorAdviceShown = true
+	}); err != nil {
+		t.Fatalf("mutate: %v", err)
+	}
+
+	loaded, err := state.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !loaded.EditorAdviceShown {
+		t.Fatalf("EditorAdviceShown not persisted")
+	}
+}

@@ -53,6 +53,17 @@ type CreateMetaLoadedMsg struct {
 // "loading projects" state if it was tracking one.
 type CreateCancelledMsg struct{}
 
+// CreateOpenEditorMsg is published by the description row in the create
+// wizard when the user requests the external editor. The root model
+// dispatches editor.Open and routes the resulting editor.ClosedMsg back
+// to the wizard via Create.HandleEditorClosed.
+type CreateOpenEditorMsg struct {
+	Summary string
+	Body    string
+	Title   string
+	Token   int
+}
+
 // CreateSubmitRequestedMsg is published when the user presses Ctrl+S on a
 // validated Step 3 form. The root model dispatches CreateIssue with Payload
 // and replies with CreateSubmitDoneMsg.
@@ -125,6 +136,10 @@ type Create struct {
 
 	submitting bool
 	submitErr  string
+
+	// pendingEditorToken increments each time the wizard dispatches the
+	// external editor. Stale ClosedMsg results are dropped via token mismatch.
+	pendingEditorToken int
 
 	metaCache map[string]jira.CreateMeta
 
@@ -540,6 +555,18 @@ func (c Create) updateTypeStep(msg tea.Msg) (Create, tea.Cmd) {
 	return c, cmd
 }
 
+// formSummaryValue returns the current value of the wizard's summary field,
+// or "" if no such field exists yet. The external editor seeds its H1 with
+// this value so users edit a single coherent buffer.
+func (c Create) formSummaryValue() string {
+	for _, f := range c.form.Fields {
+		if f.Meta.ID == "summary" {
+			return f.Value()
+		}
+	}
+	return ""
+}
+
 // updateFieldsStep handles input while Step 3 is active. Esc steps back to
 // the type picker (preserving the previously chosen project); Ctrl+S submits
 // the form (after validation); other keys are forwarded to the form so its
@@ -576,6 +603,24 @@ func (c Create) updateFieldsStep(msg tea.Msg) (Create, tea.Cmd) {
 				var cmd tea.Cmd
 				*focused, cmd = focused.UpdateUser(k)
 				return c, cmd
+			}
+		}
+	}
+	if req, ok := msg.(OpenExternalEditorRequestMsg); ok {
+		c.pendingEditorToken++
+		title := "New issue"
+		if c.selectedType.Name != "" {
+			title = "New " + c.selectedType.Name
+		}
+		summary := c.formSummaryValue()
+		body := req.Body
+		token := c.pendingEditorToken
+		return c, func() tea.Msg {
+			return CreateOpenEditorMsg{
+				Summary: summary,
+				Body:    body,
+				Title:   title,
+				Token:   token,
 			}
 		}
 	}
@@ -690,6 +735,36 @@ func (c Create) handleMetaLoadedMsg(m CreateMetaLoadedMsg) Create {
 	c.form = BuildForm(m.Meta, FormDefaults{CurrentUserAccountID: c.currentUserAccountID})
 	c.formReady = true
 	return c
+}
+
+// HandleEditorClosed consumes the external-editor result. Stale tokens are
+// dropped silently. On cancel/error, the wizard does not touch the form.
+// On success, the form's summary field is overwritten when the parser
+// yielded a non-empty H1; the description field's body is always set.
+//
+// The app-level dispatcher imports the editor package; this method takes
+// summary/body/cancelled/err/token by value to avoid an import cycle.
+func (c Create) HandleEditorClosed(token int, cancelled bool, summary, body string, err error) (Create, error) {
+	if token != c.pendingEditorToken {
+		return c, nil
+	}
+	if err != nil {
+		return c, err
+	}
+	if cancelled {
+		return c, nil
+	}
+	for i := range c.form.Fields {
+		switch c.form.Fields[i].Meta.ID {
+		case "summary":
+			if summary != "" {
+				c.form.Fields[i] = c.form.Fields[i].SetValue(summary)
+			}
+		case "description":
+			c.form.Fields[i] = c.form.Fields[i].SetExternalBody(body)
+		}
+	}
+	return c, nil
 }
 
 // Form returns the dynamic-fields form built from createmeta. It is the

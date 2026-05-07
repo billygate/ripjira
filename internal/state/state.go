@@ -41,6 +41,11 @@ type State struct {
 	// LastView is the ViewKind active at exit. The next session boots into
 	// it instead of the zero-value ViewMyTasks.
 	LastView *int `json:"lastView,omitempty"`
+
+	// EditorAdviceShown is flipped to true the first time the app boots
+	// after this feature ships. Used to gate the one-shot first-launch
+	// editor-availability tip.
+	EditorAdviceShown bool `json:"editorAdviceShown,omitempty"`
 }
 
 // Favorite is a named JQL query the user has saved for re-use. Names are

@@ -43,6 +43,10 @@ const (
 	FieldKindNumber
 	// FieldKindDate is a free-text input expecting YYYY-MM-DD.
 	FieldKindDate
+	// FieldKindExternalADF is description-only: no in-app textarea. Focusing
+	// the row shows a placeholder; the wizard wires Enter / `e` to launch
+	// the user's $EDITOR (Task 8 plumbs that through).
+	FieldKindExternalADF
 )
 
 // dateMask is the date layout the form accepts and the placeholder shown in
@@ -79,6 +83,10 @@ type Field struct {
 	accountID string
 	dropdown  userDropdown
 
+	// body holds the markdown body for FieldKindExternalADF, populated by
+	// the external editor flow. Always empty for other kinds.
+	body string
+
 	focused bool
 	err     string // last validation/server error bound to this field
 }
@@ -111,6 +119,8 @@ func newField(meta jira.FieldMeta, kind FieldKind) Field {
 		f.area = ta
 	case FieldKindMultiOption:
 		f.selected = map[string]bool{}
+	case FieldKindExternalADF:
+		// no embedded widget; body is plain string
 	}
 	return f
 }
@@ -122,7 +132,7 @@ func detectFieldKind(meta jira.FieldMeta) FieldKind {
 	switch meta.SchemaType {
 	case "string":
 		if meta.ID == "description" {
-			return FieldKindADF
+			return FieldKindExternalADF
 		}
 		return FieldKindString
 	case "option", "priority", "issuetype":
@@ -179,6 +189,8 @@ func (f Field) Value() string {
 		return f.text.Value()
 	case FieldKindADF:
 		return f.area.Value()
+	case FieldKindExternalADF:
+		return f.body
 	case FieldKindOption:
 		if f.cursor < 0 || f.cursor >= len(f.Meta.AllowedValues) {
 			return ""
@@ -204,6 +216,8 @@ func (f Field) SetValue(s string) Field {
 		f.text.SetValue(s)
 	case FieldKindADF:
 		f.area.SetValue(s)
+	case FieldKindExternalADF:
+		f.body = s
 	case FieldKindOption:
 		for i, opt := range f.Meta.AllowedValues {
 			if opt.ID == s {
@@ -290,6 +304,18 @@ func (f Field) Update(msg tea.Msg) (Field, tea.Cmd) {
 			}
 		}
 		return f, nil
+	case FieldKindExternalADF:
+		k, ok := msg.(tea.KeyMsg)
+		if !ok {
+			return f, nil
+		}
+		if k.String() == "enter" || k.String() == "e" {
+			body := f.body
+			return f, func() tea.Msg {
+				return OpenExternalEditorRequestMsg{Body: body}
+			}
+		}
+		return f, nil
 	}
 	return f, nil
 }
@@ -350,6 +376,8 @@ func (f Field) viewControl(s styles.Styles) string {
 		return base
 	case FieldKindADF:
 		return f.area.View()
+	case FieldKindExternalADF:
+		return externalADFPreview(f.body)
 	case FieldKindOption:
 		return f.viewOptions(s, false)
 	case FieldKindMultiOption:
@@ -384,6 +412,51 @@ func (f Field) viewOptions(s styles.Styles, multi bool) string {
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)
 }
+
+// externalADFPreview returns a one-line preview of an external-ADF body
+// for the placeholder row. Empty body shows the prompt; multi-line bodies
+// show the first non-empty line, ellipsised at 50 runes, suffixed with
+// " · N lines" when N > 1.
+func externalADFPreview(body string) string {
+	if strings.TrimSpace(body) == "" {
+		return "(empty — Enter to edit)"
+	}
+	lines := strings.Split(body, "\n")
+	first := ""
+	count := 0
+	for _, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			if first == "" {
+				first = strings.TrimSpace(l)
+			}
+			count++
+		}
+	}
+	if first == "" {
+		return "(empty — Enter to edit)"
+	}
+	const maxRune = 50
+	rs := []rune(first)
+	if len(rs) > maxRune {
+		first = string(rs[:maxRune-1]) + "…"
+	}
+	if count > 1 {
+		first += "  · " + strconv.Itoa(count) + " lines"
+	}
+	return first
+}
+
+// SetExternalBody overrides the body of a FieldKindExternalADF field. No-op
+// for other kinds.
+func (f Field) SetExternalBody(s string) Field {
+	if f.Kind == FieldKindExternalADF {
+		f.body = s
+	}
+	return f
+}
+
+// ExternalBody returns the stored markdown body. "" for non-external kinds.
+func (f Field) ExternalBody() string { return f.body }
 
 // Validate returns a non-empty error string when the field's current value
 // fails its constraints (required, numeric, date format). An empty return
@@ -428,6 +501,18 @@ func (f *Field) OnTextChanged() {
 	if f.accountID != "" {
 		f.accountID = ""
 	}
+}
+
+// OpenExternalEditorRequestMsg is emitted by a focused FieldKindExternalADF
+// row when the user requests the external editor. The root model forwards
+// it back to the visible Create overlay, which combines it with the form's
+// current summary value before emitting CreateOpenEditorMsg.
+//
+// It is exported so the root model's Update can route the message — Field
+// emits messages but the wizard's updateFieldsStep is what understands them
+// in context, so the message must travel through tea's event loop and back.
+type OpenExternalEditorRequestMsg struct {
+	Body string
 }
 
 // UserSearchRequestMsg is dispatched by a debounce timer; the create
@@ -528,6 +613,8 @@ func (f Field) PayloadValue() (any, bool) {
 		if f.Kind == FieldKindADF {
 			return val, true // create.go converts the description string itself
 		}
+		return val, true
+	case FieldKindExternalADF:
 		return val, true
 	case FieldKindOption:
 		return map[string]string{"id": val}, true
@@ -817,6 +904,8 @@ func describeFieldKind(k FieldKind) string {
 		return "number"
 	case FieldKindDate:
 		return "date"
+	case FieldKindExternalADF:
+		return "external-adf"
 	}
 	return "unknown"
 }

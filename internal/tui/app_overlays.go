@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/billygate/ripjira/internal/structure"
+	"github.com/billygate/ripjira/internal/tui/editor"
 	"github.com/billygate/ripjira/internal/tui/overlays"
 	"github.com/billygate/ripjira/internal/tui/panes"
 )
@@ -168,6 +169,25 @@ func (m Model) openDescriptionOverlay() (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.description, cmd = m.description.Show(issue.Key, issue.Description)
 	return m, cmd
+}
+
+// openExternalEditor launches $EDITOR on a temp file pre-filled with the
+// loaded issue's summary (as # H1) and description (as body). The result
+// is consumed via editor.ClosedMsg in a later task.
+func (m Model) openExternalEditor() (tea.Model, tea.Cmd) {
+	issue := m.detail.Issue()
+	if issue == nil {
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "Open an issue first", Level: ToastInfo}
+		}
+	}
+	m.editorToken++
+	return m, editor.Open(editor.OpenSpec{
+		Summary: issue.Summary,
+		Body:    issue.Description,
+		Title:   issue.Key,
+		Token:   m.editorToken,
+	})
 }
 
 // openRemoveLinkOverlay opens the remove-link picker over the current

@@ -100,6 +100,7 @@ ripjira login --reset   # delete the stored token first, then re-run
 | `s`                | change status (transition picker)     |
 | `a`                | assign to a user                      |
 | `E`                | edit epic (set or detach parent)      |
+| `ctrl+e`           | edit summary + body in `$EDITOR`      |
 | `c`                | add a comment                         |
 | `n`                | create a new issue                    |
 | `S`                | create a subtask of the current issue |

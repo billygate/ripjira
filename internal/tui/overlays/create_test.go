@@ -453,6 +453,86 @@ func TestCreate_UserSearchRequestReemitted(t *testing.T) {
 	}
 }
 
+// newWizardOnFieldsStepWithDescription returns a Create overlay that is on
+// Step 3 (fields) with a form built from a meta containing summary and
+// description, with focus placed on the description row.
+func newWizardOnFieldsStepWithDescription(t *testing.T) Create {
+	t.Helper()
+	meta := jira.CreateMeta{Fields: []jira.FieldMeta{
+		{ID: "summary", Name: "Summary", Required: true, SchemaType: "string"},
+		{ID: "description", Name: "Description", SchemaType: "string"},
+	}}
+	c, _ := advanceToFields(t, NewCreate(closeBinding(), ""), "BETA", "Task")
+	c, _ = c.Update(CreateMetaLoadedMsg{
+		ProjectKey:  "BETA",
+		IssueTypeID: c.SelectedIssueType().ID,
+		Meta:        meta,
+	})
+	if !c.FormReady() {
+		t.Fatal("newWizardOnFieldsStepWithDescription: form not ready")
+	}
+	// Move focus to description (index 1 after reorder: summary=0, description=1).
+	c, _ = c.Update(tea.KeyMsg{Type: tea.KeyTab})
+	return c
+}
+
+func TestCreate_OpenEditorMsgFromDescription(t *testing.T) {
+	c := newWizardOnFieldsStepWithDescription(t)
+	// Enter on the description row emits openExternalEditorRequestMsg as a cmd.
+	// The app calls that cmd and routes the result back into the wizard, which
+	// then emits the public CreateOpenEditorMsg.
+	c, cmd := c.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected cmd from Enter on description row")
+	}
+	innerMsg := cmd()
+	// Feed the inner message back — wizard intercepts and promotes it.
+	_, cmd = c.Update(innerMsg)
+	if cmd == nil {
+		t.Fatal("expected cmd from wizard after openExternalEditorRequestMsg")
+	}
+	msg := cmd()
+	if _, ok := msg.(CreateOpenEditorMsg); !ok {
+		t.Fatalf("got %T, want CreateOpenEditorMsg", msg)
+	}
+}
+
+func TestCreate_HandleEditorClosed_AppliesBoth(t *testing.T) {
+	c := newWizardOnFieldsStepWithDescription(t)
+	c.pendingEditorToken = 1
+
+	c, err := c.HandleEditorClosed(1, false, "Wizard summary", "Body lines", nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	for _, f := range c.form.Fields {
+		switch f.Meta.ID {
+		case "summary":
+			if f.Value() != "Wizard summary" {
+				t.Errorf("summary: %q", f.Value())
+			}
+		case "description":
+			if f.ExternalBody() != "Body lines" {
+				t.Errorf("body: %q", f.ExternalBody())
+			}
+		}
+	}
+}
+
+func TestCreate_HandleEditorClosed_StaleTokenIgnored(t *testing.T) {
+	c := newWizardOnFieldsStepWithDescription(t)
+	c.pendingEditorToken = 5
+	c, err := c.HandleEditorClosed(4, false, "Stale", "Stale body", nil)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	for _, f := range c.form.Fields {
+		if f.Meta.ID == "description" && f.ExternalBody() != "" {
+			t.Errorf("description should be untouched, got %q", f.ExternalBody())
+		}
+	}
+}
+
 // findProjectChosenMsg unwraps a (possibly batched) tea.Msg looking for a
 // CreateProjectChosenMsg leaf. Mirrors findSearchRequestMsg.
 func findProjectChosenMsg(msg tea.Msg) (CreateProjectChosenMsg, bool) {
