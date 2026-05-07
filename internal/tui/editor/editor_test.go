@@ -82,7 +82,7 @@ func TestOpen_NonZeroExitIsCancelled(t *testing.T) {
 	prevRun := runEditor
 	t.Cleanup(func() { runEditor = prevRun })
 
-	runEditor = func(path string) error {
+	runEditor = func(_ string) error {
 		return fakeExitErr(t, 1)
 	}
 
@@ -101,7 +101,7 @@ func TestOpen_GenericErrorPropagates(t *testing.T) {
 	t.Cleanup(func() { runEditor = prevRun })
 
 	want := errors.New("spawn boom")
-	runEditor = func(path string) error { return want }
+	runEditor = func(_ string) error { return want }
 
 	cmd := Open(OpenSpec{Token: 2})
 	msg := runCmd(t, cmd).(ClosedMsg)

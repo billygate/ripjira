@@ -75,7 +75,7 @@ func Open(spec OpenSpec) tea.Cmd {
 			return ClosedMsg{Token: spec.Token, Err: fmt.Errorf("create temp: %w", err)}
 		}
 		path := f.Name()
-		defer os.Remove(path)
+		defer func() { _ = os.Remove(path) }()
 
 		if _, err := f.WriteString(buildSeed(spec)); err != nil {
 			_ = f.Close()
