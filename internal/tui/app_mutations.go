@@ -9,6 +9,7 @@ import (
 
 	"github.com/billygate/ripjira/internal/jira"
 	"github.com/billygate/ripjira/internal/state"
+	"github.com/billygate/ripjira/internal/tui/editor"
 	"github.com/billygate/ripjira/internal/tui/grouping"
 	"github.com/billygate/ripjira/internal/tui/overlays"
 	"github.com/billygate/ripjira/internal/tui/panes"
@@ -882,4 +883,122 @@ func (m Model) handleTransitionDone(msg transitionDoneMsg) (tea.Model, tea.Cmd) 
 		}
 	}
 	return m, tea.Batch(stopSpinner, toast)
+}
+
+// handleEditorClosed consumes the result of an external-editor session
+// dispatched from the issue screen. Stale tokens are dropped silently
+// (the user has moved on); cancellations are silent. On success, only
+// the fields that actually changed are sent in a single mutation,
+// mirroring the optimistic path used by EditSummary / Description.
+func (m Model) handleEditorClosed(msg editor.ClosedMsg) (tea.Model, tea.Cmd) {
+	if msg.Token != m.editorToken {
+		return m, nil
+	}
+	if msg.Err != nil {
+		err := msg.Err
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "Editor: " + err.Error(), Level: ToastError}
+		}
+	}
+	if msg.Cancelled {
+		return m, nil
+	}
+	issue := m.detail.Issue()
+	if issue == nil || m.loader == nil {
+		return m, nil
+	}
+
+	prevSummary := issue.Summary
+	prevBody := issue.Description
+
+	newSummary := prevSummary
+	summaryChanged := msg.Summary != "" && msg.Summary != prevSummary
+	if summaryChanged {
+		newSummary = msg.Summary
+	}
+	bodyChanged := msg.Body != prevBody
+
+	if !summaryChanged && !bodyChanged {
+		return m, nil
+	}
+
+	if summaryChanged {
+		m.list.UpdateIssueSummary(issue.Key, newSummary)
+		m.detail.UpdateSummary(issue.Key, newSummary)
+	}
+	if bodyChanged {
+		m.detail.UpdateDescription(issue.Key, msg.Body)
+	}
+
+	loader := m.loader
+	key := issue.Key
+	newBody := msg.Body
+	startSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: 1} }
+	call := func() tea.Msg {
+		var errSum, errDesc error
+		if summaryChanged {
+			errSum = loader.UpdateFields(context.Background(), key, map[string]any{
+				"summary": newSummary,
+			})
+		}
+		if bodyChanged {
+			errDesc = loader.UpdateDescription(context.Background(), key, newBody)
+		}
+		return externalEditorDoneMsg{
+			IssueKey:    key,
+			PrevSummary: prevSummary,
+			NewSummary:  newSummary,
+			SumChanged:  summaryChanged,
+			PrevBody:    prevBody,
+			NewBody:     newBody,
+			BodyChanged: bodyChanged,
+			SummaryErr:  errSum,
+			DescErr:     errDesc,
+		}
+	}
+	return m, tea.Batch(startSpinner, call)
+}
+
+// externalEditorDoneMsg is the result of the two underlying API calls
+// dispatched by handleEditorClosed. We track them separately so that a
+// partial failure (e.g. summary OK, description rejected) reverts only
+// the failed half.
+type externalEditorDoneMsg struct {
+	IssueKey                string
+	PrevSummary, NewSummary string
+	SumChanged              bool
+	PrevBody, NewBody       string
+	BodyChanged             bool
+	SummaryErr              error
+	DescErr                 error
+}
+
+// handleExternalEditorDone consumes externalEditorDoneMsg, reverting any
+// optimistic update whose call failed and posting per-failure toasts.
+func (m Model) handleExternalEditorDone(msg externalEditorDoneMsg) (tea.Model, tea.Cmd) {
+	stopSpinner := func() tea.Msg { return BackgroundActivityMsg{Delta: -1} }
+	cmds := []tea.Cmd{stopSpinner}
+
+	if msg.SummaryErr != nil && msg.SumChanged {
+		m.list.UpdateIssueSummary(msg.IssueKey, msg.PrevSummary)
+		m.detail.UpdateSummary(msg.IssueKey, msg.PrevSummary)
+		errCopy := msg.SummaryErr
+		cmds = append(cmds, func() tea.Msg {
+			return ToastMsg{Text: "Edit summary failed: " + errCopy.Error(), Level: ToastError}
+		})
+	}
+	if msg.DescErr != nil && msg.BodyChanged {
+		m.detail.UpdateDescription(msg.IssueKey, msg.PrevBody)
+		errCopy := msg.DescErr
+		cmds = append(cmds, func() tea.Msg {
+			return ToastMsg{Text: "Edit description failed: " + errCopy.Error(), Level: ToastError}
+		})
+	}
+	if msg.SummaryErr == nil && msg.DescErr == nil {
+		cmds = append(cmds, func() tea.Msg {
+			return ToastMsg{Text: "Updated " + msg.IssueKey, Level: ToastInfo}
+		})
+		cmds = append(cmds, m.reloadDetailIfMatches(msg.IssueKey))
+	}
+	return m, tea.Batch(cmds...)
 }

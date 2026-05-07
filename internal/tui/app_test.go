@@ -21,6 +21,7 @@ import (
 	"github.com/billygate/ripjira/internal/jira"
 	"github.com/billygate/ripjira/internal/state"
 	"github.com/billygate/ripjira/internal/structure"
+	"github.com/billygate/ripjira/internal/tui/editor"
 	"github.com/billygate/ripjira/internal/tui/grouping"
 	"github.com/billygate/ripjira/internal/tui/overlays"
 	"github.com/billygate/ripjira/internal/tui/panes"
@@ -1640,5 +1641,114 @@ func TestKeymap_CtrlE_DispatchesEditorOpen_OnIssueScreen(t *testing.T) {
 	}
 	if m.editorToken == 0 {
 		t.Fatalf("editorToken not advanced after ctrl+e")
+	}
+}
+
+// captureLoader extends recordingLoader by capturing UpdateFields and
+// UpdateDescription calls so tests can assert what was sent to the API.
+type captureLoader struct {
+	*recordingLoader
+	updateFieldsCalls    int
+	updateFieldsLastKey  string
+	updateFieldsLastArgs map[string]any
+	updateDescCalls      int
+	updateDescLastKey    string
+	updateDescLastBody   string
+	updateFieldsErr      error
+	updateDescErr        error
+}
+
+func newCaptureLoader() *captureLoader {
+	return &captureLoader{recordingLoader: &recordingLoader{}}
+}
+
+func (l *captureLoader) UpdateFields(_ context.Context, key string, fields map[string]any) error {
+	l.updateFieldsCalls++
+	l.updateFieldsLastKey = key
+	l.updateFieldsLastArgs = fields
+	return l.updateFieldsErr
+}
+
+func (l *captureLoader) UpdateDescription(_ context.Context, key, body string) error {
+	l.updateDescCalls++
+	l.updateDescLastKey = key
+	l.updateDescLastBody = body
+	return l.updateDescErr
+}
+
+func TestEditorClosed_AppliesBothChanges(t *testing.T) {
+	loader := newCaptureLoader()
+	m := newTestAppModelWithLoader(t, 120, 30, loader)
+	m.detail.SetIssue(&jira.Issue{Key: "ABC-1", Summary: "Old", Description: "Old body"})
+	m.editorToken = 42
+
+	updated, cmd := m.Update(editor.ClosedMsg{
+		Token:   42,
+		Summary: "New summary",
+		Body:    "New body",
+	})
+	m = updated.(Model)
+	if cmd == nil {
+		t.Fatal("expected cmd from ClosedMsg")
+	}
+	m = drainCmds(t, m, cmd)
+
+	if loader.updateFieldsCalls != 1 {
+		t.Errorf("UpdateFields calls: got %d want 1", loader.updateFieldsCalls)
+	}
+	if got, _ := loader.updateFieldsLastArgs["summary"].(string); got != "New summary" {
+		t.Errorf("summary wire: got %q", got)
+	}
+	if loader.updateDescCalls != 1 {
+		t.Errorf("UpdateDescription calls: got %d want 1", loader.updateDescCalls)
+	}
+	if loader.updateDescLastBody != "New body" {
+		t.Errorf("desc wire: got %q", loader.updateDescLastBody)
+	}
+}
+
+func TestEditorClosed_StaleTokenDropped(t *testing.T) {
+	loader := newCaptureLoader()
+	m := newTestAppModelWithLoader(t, 120, 30, loader)
+	m.detail.SetIssue(&jira.Issue{Key: "ABC-1", Summary: "Old"})
+	m.editorToken = 5
+
+	_, cmd := m.Update(editor.ClosedMsg{Token: 4, Summary: "Stale", Body: "Stale body"})
+	if cmd != nil {
+		drainCmds(t, m, cmd)
+	}
+	if loader.updateFieldsCalls+loader.updateDescCalls != 0 {
+		t.Errorf("stale token must not call loader; got %d/%d",
+			loader.updateFieldsCalls, loader.updateDescCalls)
+	}
+}
+
+func TestEditorClosed_NoChangeNoCall(t *testing.T) {
+	loader := newCaptureLoader()
+	m := newTestAppModelWithLoader(t, 120, 30, loader)
+	m.detail.SetIssue(&jira.Issue{Key: "ABC-1", Summary: "Same", Description: "Same body"})
+	m.editorToken = 1
+
+	_, cmd := m.Update(editor.ClosedMsg{Token: 1, Summary: "Same", Body: "Same body"})
+	if cmd != nil {
+		drainCmds(t, m, cmd)
+	}
+	if loader.updateFieldsCalls+loader.updateDescCalls != 0 {
+		t.Errorf("no-diff should not call loader")
+	}
+}
+
+func TestEditorClosed_CancelledIsSilent(t *testing.T) {
+	loader := newCaptureLoader()
+	m := newTestAppModelWithLoader(t, 120, 30, loader)
+	m.detail.SetIssue(&jira.Issue{Key: "ABC-1", Summary: "X"})
+	m.editorToken = 1
+
+	_, cmd := m.Update(editor.ClosedMsg{Token: 1, Cancelled: true})
+	if cmd != nil {
+		drainCmds(t, m, cmd)
+	}
+	if loader.updateFieldsCalls+loader.updateDescCalls != 0 {
+		t.Errorf("cancel must not call loader")
 	}
 }

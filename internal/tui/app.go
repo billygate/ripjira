@@ -11,6 +11,7 @@ import (
 	"github.com/billygate/ripjira/internal/jira"
 	"github.com/billygate/ripjira/internal/state"
 	"github.com/billygate/ripjira/internal/structure"
+	"github.com/billygate/ripjira/internal/tui/editor"
 	"github.com/billygate/ripjira/internal/tui/grouping"
 	"github.com/billygate/ripjira/internal/tui/overlays"
 	"github.com/billygate/ripjira/internal/tui/panes"
@@ -561,6 +562,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleDescriptionSubmitted(msg)
 	case descriptionDoneMsg:
 		return m.handleDescriptionDone(msg)
+	case editor.ClosedMsg:
+		return m.handleEditorClosed(msg)
+	case externalEditorDoneMsg:
+		return m.handleExternalEditorDone(msg)
 	case overlays.PrioritySelectedMsg:
 		return m.handlePrioritySelected(msg)
 	case epicsLoadedMsg:
