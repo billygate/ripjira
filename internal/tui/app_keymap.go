@@ -38,6 +38,21 @@ func (m Model) canArmQuit() bool {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.editorInstallPrompt {
+		switch msg.String() {
+		case "y", "Y":
+			m.editorInstallPrompt = false
+			return m, runBrewInstallCmd(m.editorEnv)
+		default:
+			m.editorInstallPrompt = false
+			return m, func() tea.Msg {
+				return ToastMsg{
+					Text:  "Tip: brew install neovim — see https://www.lazyvim.org for a config preset.",
+					Level: ToastInfo,
+				}
+			}
+		}
+	}
 	if m.help.Visible() {
 		var cmd tea.Cmd
 		m.help, cmd = m.help.Update(msg)

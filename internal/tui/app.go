@@ -131,6 +131,16 @@ type Model struct {
 	// rapid ctrl+e presses from clobbering the latest issue.
 	editorToken int
 
+	// editorEnv abstracts editor-binary detection for first-launch advice
+	// and the optional brew-install offer. Production uses DefaultEditorEnv();
+	// tests inject a fake.
+	editorEnv EditorEnv
+
+	// editorInstallPrompt is true while the modal "Install via 'brew install
+	// neovim'? [y/N]" prompt is being shown. While true, key handling
+	// short-circuits to consume y/n and dismiss the prompt.
+	editorInstallPrompt bool
+
 	// recentlyCreated keeps a freshly-created issue alive in the visible list
 	// until Jira's eventually-consistent search index returns it for the
 	// active view's JQL. Cleared in handleListFetched once the server's
@@ -219,6 +229,7 @@ func New(p themes.Palette, opts ...Option) Model {
 		list:          panes.New(st, grouping.ByStatus{}, 1, 1),
 		detail:        panes.NewDetail(st, panesNoopLoader{}, 1, 1),
 		browser:       OSOpener{},
+		editorEnv:     DefaultEditorEnv(),
 	}
 	for _, o := range opts {
 		o(&m)
@@ -429,6 +440,11 @@ func (m Model) Init() tea.Cmd {
 	}
 	if cmd := m.watchStructuresNextCmd(); cmd != nil {
 		cmds = append(cmds, cmd)
+	}
+	if m.editorEnv != nil {
+		if adv := EditorAdviceCmd(modelAdviceState{path: m.statePath}, m.editorEnv); adv != nil {
+			cmds = append(cmds, adv)
+		}
 	}
 	if len(cmds) == 0 {
 		return nil
@@ -753,6 +769,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return browserOpenedMsg{URL: url, Err: opener.Open(url)}
 		}
 	case overlays.CreateCancelledMsg:
+		return m, nil
+	case EditorInstallConfirmMsg:
+		m.editorInstallPrompt = true
 		return m, nil
 	case overlays.SettingsAppliedMsg:
 		return m.handleSettingsApplied(msg)

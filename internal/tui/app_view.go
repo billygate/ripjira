@@ -44,6 +44,9 @@ func (m Model) View() string {
 	if toasts != "" {
 		parts = append(parts, toasts)
 	}
+	if m.editorInstallPrompt {
+		parts = append(parts, m.renderInstallPrompt())
+	}
 	parts = append(parts, hintBar)
 	frame := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
@@ -488,4 +491,12 @@ func truncatePane(s string, n int) string {
 // renderTabs as part of renderTopBar.
 func (m Model) renderTabBar() string {
 	return m.styles.TabDivider.Render(strings.Repeat("─", m.width))
+}
+
+// renderInstallPrompt renders the one-line Y/N install offer shown when the
+// first-launch advice detects macOS+brew without nvim. Styled as a hint bar
+// so it sits naturally between the toast area and the regular hint bar.
+func (m Model) renderInstallPrompt() string {
+	text := "Neovim isn't installed. Install via 'brew install neovim'? [y/N]"
+	return m.styles.HintBar.Width(m.width).Render(text)
 }

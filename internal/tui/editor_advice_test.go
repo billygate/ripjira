@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 type fakeEditorEnv struct {
@@ -132,5 +134,44 @@ func TestRunBrewInstall_ErrorToasts(t *testing.T) {
 	}
 	if !strings.Contains(msg.Text, "Install failed") {
 		t.Errorf("toast text: %q", msg.Text)
+	}
+}
+
+func TestModel_InstallPrompt_AcceptRunsBrew(t *testing.T) {
+	m := newTestModel(t)
+	env := &fakeEditorEnv{isDarwin: true, hasBrew: true}
+	m.editorEnv = env
+	m.editorInstallPrompt = true
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m = updated.(Model)
+	if m.editorInstallPrompt {
+		t.Fatal("prompt should be dismissed after y")
+	}
+	if cmd == nil {
+		t.Fatal("expected install cmd")
+	}
+	_ = cmd()
+	if !env.installed {
+		t.Fatal("brew install not invoked")
+	}
+}
+
+func TestModel_InstallPrompt_DeclineToasts(t *testing.T) {
+	m := newTestModel(t)
+	env := &fakeEditorEnv{isDarwin: true, hasBrew: true}
+	m.editorEnv = env
+	m.editorInstallPrompt = true
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	if cmd == nil {
+		t.Fatal("expected tip toast")
+	}
+	if env.installed {
+		t.Fatal("decline must not install")
+	}
+	msg := cmd()
+	if _, ok := msg.(ToastMsg); !ok {
+		t.Fatalf("got %T, want ToastMsg", msg)
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"runtime"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/billygate/ripjira/internal/state"
 )
 
 // EditorAdviceState is the subset of the runtime state store the advice
@@ -88,3 +90,32 @@ func (defaultEditorEnv) RunBrewInstall() error {
 
 // DefaultEditorEnv returns the production EditorEnv. Used by app bootstrap.
 func DefaultEditorEnv() EditorEnv { return defaultEditorEnv{} }
+
+// modelAdviceState adapts the Model's state-file plumbing to the
+// EditorAdviceState interface. AdviceShown reads the state file once;
+// MarkAdviceShown writes via state.Mutate. Errors are swallowed — the
+// flag is best-effort and a missing or unwritable state file should not
+// block startup.
+type modelAdviceState struct {
+	path string
+}
+
+func (a modelAdviceState) AdviceShown() bool {
+	if a.path == "" {
+		return true // no state path → don't show advice (test-mode safe default)
+	}
+	s, err := state.Load(a.path)
+	if err != nil {
+		return true
+	}
+	return s.EditorAdviceShown
+}
+
+func (a modelAdviceState) MarkAdviceShown() {
+	if a.path == "" {
+		return
+	}
+	_ = state.Mutate(a.path, func(s *state.State) {
+		s.EditorAdviceShown = true
+	})
+}
