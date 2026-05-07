@@ -1,6 +1,9 @@
 package tui
 
-import "github.com/billygate/ripjira/internal/jira"
+import (
+	"github.com/billygate/ripjira/internal/config"
+	"github.com/billygate/ripjira/internal/jira"
+)
 
 // epicsLoadedMsg is the result of an async SearchEpics dispatched while the
 // epic picker is open. IssueKey is the originating issue so a stale result
@@ -43,4 +46,12 @@ type structureChangedMsg struct{ Project string }
 // +1 when they kick off a network request and -1 when it completes.
 type BackgroundActivityMsg struct {
 	Delta int
+}
+
+// SettingsSaveErrorMsg is emitted by the YAML write tea.Cmd on failure. The
+// root model surfaces a toast and re-opens the Settings overlay seeded with
+// Draft so the user can adjust and retry.
+type SettingsSaveErrorMsg struct {
+	Draft config.Config
+	Err   error
 }
