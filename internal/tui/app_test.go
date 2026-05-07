@@ -1363,6 +1363,42 @@ func TestModelStoresConfig(t *testing.T) {
 	}
 }
 
+func TestSettingsOverlay_RendersFrame(t *testing.T) {
+	cfg := config.Config{
+		BaseURL:            "https://x.atlassian.net",
+		Email:              "a@b.c",
+		Theme:              config.ThemeTokyoNight,
+		Icons:              config.IconsUnicode,
+		DefaultGrouping:    config.GroupingStatus,
+		AutoRefreshSeconds: 60,
+		EpicIssueTypes:     []string{"Epic", "Epic Feature"},
+	}
+	p, _ := themes.ByName("tokyonight")
+	m := New(p, WithConfig(cfg))
+	m, _ = sendSize(m, 100, 40)
+	m.settings = m.settings.Show(cfg)
+
+	view := stripANSI(m.View())
+	for _, want := range []string{
+		"Settings",
+		"Theme",
+		"Icons",
+		"Default grouping",
+		"Auto refresh (s)",
+		"Epic issue types",
+		"tokyonight",
+		"unicode",
+		"status",
+		"60",
+		"Epic, Epic Feature",
+		"ctrl+s save",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("settings overlay frame missing %q", want)
+		}
+	}
+}
+
 func TestSettingsOverlayShows(t *testing.T) {
 	cfg := config.Config{
 		BaseURL:            "https://x.atlassian.net",
