@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -1342,13 +1343,13 @@ func TestApp_ScopeSaved_PersistsToStore(t *testing.T) {
 
 func TestModelStoresConfig(t *testing.T) {
 	cfg := config.Config{
-		BaseURL: "https://x.atlassian.net",
-		Email:   "a@b.c",
-		Theme:   config.ThemeTokyoNight,
-		Icons:   config.IconsUnicode,
+		BaseURL:            "https://x.atlassian.net",
+		Email:              "a@b.c",
+		Theme:              config.ThemeTokyoNight,
+		Icons:              config.IconsUnicode,
 		DefaultGrouping:    config.GroupingStatus,
 		AutoRefreshSeconds: 60,
-		EpicIssueTypes: []string{"Epic"},
+		EpicIssueTypes:     []string{"Epic"},
 	}
 	m := New(themes.TokyoNight(),
 		WithConfig(cfg),
@@ -1393,5 +1394,98 @@ func TestIssueKeyInGroupRe(t *testing.T) {
 		if got := issueKeyInGroupRe.FindString(tc.in); got != tc.want {
 			t.Errorf("FindString(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestSettingsAppliedRebuildsTheme(t *testing.T) {
+	cfg := config.Config{
+		BaseURL:            "https://x.atlassian.net",
+		Email:              "a@b.c",
+		Theme:              config.ThemeTokyoNight,
+		Icons:              config.IconsUnicode,
+		DefaultGrouping:    config.GroupingStatus,
+		AutoRefreshSeconds: 60,
+		EpicIssueTypes:     []string{"Epic"},
+	}
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	if err := config.Save(cfgPath, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	m := New(themes.TokyoNight(), WithConfig(cfg), WithConfigPath(cfgPath))
+	newCfg := cfg
+	newCfg.Theme = config.ThemeNord
+	newCfg.AutoRefreshSeconds = 30
+	newCfg.EpicIssueTypes = []string{"Initiative"}
+
+	updated, cmd := m.Update(overlays.SettingsAppliedMsg{NewCfg: newCfg})
+	mm := updated.(Model)
+
+	if mm.cfg.Theme != config.ThemeNord {
+		t.Fatalf("cfg.Theme = %q, want nord", mm.cfg.Theme)
+	}
+	nord := themes.Nord()
+	if mm.palette.Name() != nord.Name() {
+		t.Fatalf("palette = %q, want %q", mm.palette.Name(), nord.Name())
+	}
+	if mm.cfg.AutoRefreshSeconds != 30 {
+		t.Fatalf("cfg.AutoRefreshSeconds = %d, want 30", mm.cfg.AutoRefreshSeconds)
+	}
+	if !reflect.DeepEqual(mm.epicTypes, []string{"Initiative"}) {
+		t.Fatalf("epicTypes = %v, want [Initiative]", mm.epicTypes)
+	}
+	if cmd == nil {
+		t.Fatal("expected save cmd, got nil")
+	}
+	msg := cmd()
+	// The save cmd may be batched with a refresh tick; pick out the save outcome.
+	// tea.Batch returns a tea.Msg of type tea.BatchMsg. Iterate any sequence.
+	var saveErr error
+	switch v := msg.(type) {
+	case SettingsSaveErrorMsg:
+		saveErr = v.Err
+	case nil:
+		// success
+	case tea.BatchMsg:
+		// Batch returns []tea.Cmd; execute each and look for save error.
+		for _, c := range v {
+			if c == nil {
+				continue
+			}
+			if e, ok := c().(SettingsSaveErrorMsg); ok {
+				saveErr = e.Err
+			}
+		}
+	}
+	if saveErr != nil {
+		t.Fatalf("save returned error: %v", saveErr)
+	}
+
+	raw, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "nord") {
+		t.Fatalf("config.yaml does not contain new theme; got:\n%s", raw)
+	}
+}
+
+func TestSettingsCancelledIsNoop(t *testing.T) {
+	cfg := config.Config{
+		BaseURL:            "https://x.atlassian.net",
+		Email:              "a@b.c",
+		Theme:              config.ThemeTokyoNight,
+		Icons:              config.IconsUnicode,
+		DefaultGrouping:    config.GroupingStatus,
+		AutoRefreshSeconds: 60,
+	}
+	m := New(themes.TokyoNight(), WithConfig(cfg))
+	updated, cmd := m.Update(overlays.SettingsCancelledMsg{})
+	mm := updated.(Model)
+	if mm.cfg.Theme != cfg.Theme {
+		t.Fatal("Theme should be unchanged")
+	}
+	if cmd != nil {
+		t.Fatalf("expected nil cmd, got %T", cmd())
 	}
 }

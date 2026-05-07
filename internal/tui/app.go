@@ -737,6 +737,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case overlays.CreateCancelledMsg:
 		return m, nil
+	case overlays.SettingsAppliedMsg:
+		return m.handleSettingsApplied(msg)
+	case overlays.SettingsCancelledMsg:
+		return m, nil
+	case overlays.EpicTypesAppliedMsg:
+		m.settings = m.settings.WithEpicTypes(msg.Items)
+		return m, nil
+	case overlays.EpicTypesCancelledMsg:
+		m.settings = m.settings.CloseEpicTypes()
+		return m, nil
+	case SettingsSaveErrorMsg:
+		return m.handleSettingsSaveError(msg)
 	case overlays.OptionsAppliedMsg:
 		m.list.SetStrategy(grouping.ByName(msg.Grouping, m.epicTypes))
 		m.list.SetSort(grouping.SortByName(msg.Sort), msg.Desc)
