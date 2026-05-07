@@ -25,10 +25,11 @@ var h1RE = regexp.MustCompile(`^#\s+(\S.*?)\s*$`)
 //
 //  1. Strip any leading <!-- ripjira: ... --> comment block.
 //  2. Normalise CRLF to LF.
-//  3. Find the first non-blank line. If it matches `^# (.+)$` (the leading
-//     `#`/space, then non-empty heading text), the captured text is the
-//     summary; everything after the first blank line below the heading
-//     (or immediately after the heading if no blank line) is the body.
+//  3. Find the first non-blank line. If it matches `^#\s+(\S.*?)\s*$` (a
+//     `#`, one or more spaces, then non-empty heading text), the captured
+//     text — trimmed — is the summary; everything after the first blank
+//     line below the heading (or immediately after the heading if no blank
+//     line) is the body.
 //  4. Otherwise the summary is empty (caller leaves the existing summary
 //     untouched) and the entire content is the body.
 //  5. Trailing whitespace is trimmed from the body.
