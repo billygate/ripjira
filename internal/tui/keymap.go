@@ -166,8 +166,8 @@ func DefaultKeymap() Keymap {
 			key.WithHelp("T", "edit title"),
 		),
 		EditPriority: key.NewBinding(
-			key.WithKeys("P"),
-			key.WithHelp("P", "edit priority"),
+			key.WithKeys("Q"),
+			key.WithHelp("Q", "edit priority"),
 		),
 		EditLabels: key.NewBinding(
 			key.WithKeys("L"),
@@ -230,8 +230,8 @@ func DefaultKeymap() Keymap {
 			key.WithHelp("ctrl+t", "remove worklog"),
 		),
 		Settings: key.NewBinding(
-			key.WithKeys("ctrl+,"),
-			key.WithHelp("ctrl+,", "settings"),
+			key.WithKeys("P"),
+			key.WithHelp("P", "settings"),
 		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
