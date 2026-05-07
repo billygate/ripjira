@@ -562,6 +562,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleDescriptionSubmitted(msg)
 	case descriptionDoneMsg:
 		return m.handleDescriptionDone(msg)
+	case overlays.CreateOpenEditorMsg:
+		return m, editor.Open(editor.OpenSpec{
+			Summary: msg.Summary,
+			Body:    msg.Body,
+			Title:   msg.Title,
+			Token:   msg.Token,
+		})
 	case editor.ClosedMsg:
 		return m.handleEditorClosed(msg)
 	case externalEditorDoneMsg:

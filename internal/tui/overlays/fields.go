@@ -305,7 +305,16 @@ func (f Field) Update(msg tea.Msg) (Field, tea.Cmd) {
 		}
 		return f, nil
 	case FieldKindExternalADF:
-		// Keystroke handling for this kind is plumbed in Task 8.
+		k, ok := msg.(tea.KeyMsg)
+		if !ok {
+			return f, nil
+		}
+		if k.String() == "enter" || k.String() == "e" {
+			body := f.body
+			return f, func() tea.Msg {
+				return openExternalEditorRequestMsg{body: body}
+			}
+		}
 		return f, nil
 	}
 	return f, nil
@@ -492,6 +501,14 @@ func (f *Field) OnTextChanged() {
 	if f.accountID != "" {
 		f.accountID = ""
 	}
+}
+
+// openExternalEditorRequestMsg is emitted by a focused FieldKindExternalADF
+// row when the user requests the external editor. It is consumed by the
+// wizard, which combines it with the form's current summary value before
+// emitting the public CreateOpenEditorMsg.
+type openExternalEditorRequestMsg struct {
+	body string
 }
 
 // UserSearchRequestMsg is dispatched by a debounce timer; the create

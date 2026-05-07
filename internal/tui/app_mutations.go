@@ -885,12 +885,24 @@ func (m Model) handleTransitionDone(msg transitionDoneMsg) (tea.Model, tea.Cmd) 
 	return m, tea.Batch(stopSpinner, toast)
 }
 
-// handleEditorClosed consumes the result of an external-editor session
-// dispatched from the issue screen. Stale tokens are dropped silently
+// handleEditorClosed consumes the result of an external-editor session.
+// When the create wizard is open it is routed there first; otherwise it
+// is handled as an issue-screen edit. Stale tokens are dropped silently
 // (the user has moved on); cancellations are silent. On success, only
 // the fields that actually changed are sent in a single mutation,
 // mirroring the optimistic path used by EditSummary / Description.
 func (m Model) handleEditorClosed(msg editor.ClosedMsg) (tea.Model, tea.Cmd) {
+	if m.create.Visible() {
+		updated, err := m.create.HandleEditorClosed(msg.Token, msg.Cancelled, msg.Summary, msg.Body, msg.Err)
+		m.create = updated
+		if err != nil {
+			errCopy := err
+			return m, func() tea.Msg {
+				return ToastMsg{Text: "Editor: " + errCopy.Error(), Level: ToastError}
+			}
+		}
+		return m, nil
+	}
 	if msg.Token != m.editorToken {
 		return m, nil
 	}
