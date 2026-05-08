@@ -396,7 +396,7 @@ func runWizard(store config.SecretStore, _, _ io.Writer) error {
 // runTUI is the default TUI launcher. It resolves the palette, looks up the
 // account ID for cache scoping, pre-loads any cached issues so the first
 // frame paints them, and then hands control to bubbletea.
-func runTUI(cfg *config.Config, client *jira.Client, _, _ io.Writer) error {
+func runTUI(cfg *config.Config, client *jira.Client, _, errw io.Writer) error {
 	// Probe the terminal for inline-graphics capability before bubbletea
 	// takes over the TTY. This caches the protocol so any later call from
 	// inside the Update loop is a pure map read.
@@ -434,6 +434,12 @@ func runTUI(cfg *config.Config, client *jira.Client, _, _ io.Writer) error {
 	model := tui.New(palette, opts...)
 
 	prog := tea.NewProgram(model, tea.WithAltScreen())
-	_, err = prog.Run()
-	return err
+	final, err := prog.Run()
+	if err != nil {
+		return err
+	}
+	if m, ok := final.(tui.Model); ok && m.RestartRequested() {
+		return reExec(errw)
+	}
+	return nil
 }

@@ -1434,7 +1434,11 @@ func TestIssueKeyInGroupRe(t *testing.T) {
 	}
 }
 
-func TestSettingsAppliedRebuildsTheme(t *testing.T) {
+// TestSettingsAppliedThemeChangeRequestsRestart asserts that changing the
+// theme persists the new config and signals the entry point to re-exec.
+// The live palette is intentionally NOT swapped on this branch — the
+// new process repaints from a clean alt-screen.
+func TestSettingsAppliedThemeChangeRequestsRestart(t *testing.T) {
 	cfg := config.Config{
 		BaseURL:            "https://x.atlassian.net",
 		Email:              "a@b.c",
@@ -1458,12 +1462,16 @@ func TestSettingsAppliedRebuildsTheme(t *testing.T) {
 	updated, cmd := m.Update(overlays.SettingsAppliedMsg{NewCfg: newCfg})
 	mm := updated.(Model)
 
+	if !mm.RestartRequested() {
+		t.Fatal("RestartRequested = false, want true after theme change")
+	}
 	if mm.cfg.Theme != config.ThemeNord {
 		t.Fatalf("cfg.Theme = %q, want nord", mm.cfg.Theme)
 	}
-	nord := themes.Nord()
-	if mm.palette.Name() != nord.Name() {
-		t.Fatalf("palette = %q, want %q", mm.palette.Name(), nord.Name())
+	// Palette must NOT be swapped on the restart path — keeping the
+	// old palette avoids a one-frame flash before re-exec.
+	if mm.palette.Name() != themes.TokyoNight().Name() {
+		t.Fatalf("palette = %q, want unchanged tokyonight", mm.palette.Name())
 	}
 	if mm.cfg.AutoRefreshSeconds != 30 {
 		t.Fatalf("cfg.AutoRefreshSeconds = %d, want 30", mm.cfg.AutoRefreshSeconds)
@@ -1472,30 +1480,11 @@ func TestSettingsAppliedRebuildsTheme(t *testing.T) {
 		t.Fatalf("epicTypes = %v, want [Initiative]", mm.epicTypes)
 	}
 	if cmd == nil {
-		t.Fatal("expected save cmd, got nil")
+		t.Fatal("expected cmd batch containing tea.Quit, got nil")
 	}
 	msg := cmd()
-	// The save cmd may be batched with a refresh tick; pick out the save outcome.
-	// tea.Batch returns a tea.Msg of type tea.BatchMsg. Iterate any sequence.
-	var saveErr error
-	switch v := msg.(type) {
-	case SettingsSaveErrorMsg:
-		saveErr = v.Err
-	case nil:
-		// success
-	case tea.BatchMsg:
-		// Batch returns []tea.Cmd; execute each and look for save error.
-		for _, c := range v {
-			if c == nil {
-				continue
-			}
-			if e, ok := c().(SettingsSaveErrorMsg); ok {
-				saveErr = e.Err
-			}
-		}
-	}
-	if saveErr != nil {
-		t.Fatalf("save returned error: %v", saveErr)
+	if !containsQuit(msg) {
+		t.Fatalf("cmd did not yield tea.QuitMsg; got %T", msg)
 	}
 
 	raw, err := os.ReadFile(cfgPath)
@@ -1507,7 +1496,11 @@ func TestSettingsAppliedRebuildsTheme(t *testing.T) {
 	}
 }
 
-func TestSettingsSaveErrorReopensOverlay(t *testing.T) {
+// TestSettingsAppliedThemeChangeSaveErrorNoRestart asserts that when the
+// theme changes but config.Save fails, we surface a toast, leave
+// RestartRequested false, and keep the old in-memory theme so the user
+// can retry.
+func TestSettingsAppliedThemeChangeSaveErrorNoRestart(t *testing.T) {
 	cfg := config.Config{
 		BaseURL:            "https://x.atlassian.net",
 		Email:              "a@b.c",
@@ -1530,11 +1523,55 @@ func TestSettingsSaveErrorReopensOverlay(t *testing.T) {
 	newCfg.Theme = config.ThemeNord
 
 	updated, cmd := m.Update(overlays.SettingsAppliedMsg{NewCfg: newCfg})
+	mm := updated.(Model)
+
+	if mm.RestartRequested() {
+		t.Fatal("RestartRequested = true after save error; want false")
+	}
+	if mm.cfg.Theme != config.ThemeTokyoNight {
+		t.Fatalf("cfg.Theme = %q, want unchanged tokyonight after save failure", mm.cfg.Theme)
+	}
+	if cmd == nil {
+		t.Fatal("expected toast cmd, got nil")
+	}
+	tm, ok := cmd().(ToastMsg)
+	if !ok {
+		t.Fatalf("expected ToastMsg, got %T", cmd())
+	}
+	if tm.Level != ToastError {
+		t.Fatalf("toast level = %v, want ToastError", tm.Level)
+	}
+}
+
+// TestSettingsAppliedNonThemeSaveErrorReopensOverlay covers the legacy
+// async-save path: when the user changes a non-theme field and the
+// background save fails, the overlay re-opens with their draft so they
+// can retry.
+func TestSettingsAppliedNonThemeSaveErrorReopensOverlay(t *testing.T) {
+	cfg := config.Config{
+		BaseURL:            "https://x.atlassian.net",
+		Email:              "a@b.c",
+		Theme:              config.ThemeTokyoNight,
+		Icons:              config.IconsUnicode,
+		DefaultGrouping:    config.GroupingStatus,
+		AutoRefreshSeconds: 60,
+		EpicIssueTypes:     []string{"Epic"},
+	}
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	badPath := filepath.Join(blocker, "config.yaml")
+
+	m := New(themes.TokyoNight(), WithConfig(cfg), WithConfigPath(badPath))
+	// Change a non-theme field so we go through the async save branch.
+	newCfg := cfg
+	newCfg.AutoRefreshSeconds = 30
+
+	updated, cmd := m.Update(overlays.SettingsAppliedMsg{NewCfg: newCfg})
 	if cmd == nil {
 		t.Fatal("expected save cmd")
 	}
-	// Resolve cmd into a SettingsSaveErrorMsg. The cmd may be a single
-	// function or a tea.BatchMsg of cmds.
 	msg := cmd()
 	var errMsg SettingsSaveErrorMsg
 	var found bool
@@ -1556,15 +1593,14 @@ func TestSettingsSaveErrorReopensOverlay(t *testing.T) {
 		t.Fatalf("expected SettingsSaveErrorMsg in cmd output, got %T", msg)
 	}
 
-	// Now feed the error back into the model.
 	mm := updated.(Model)
 	afterErr, toastCmd := mm.Update(errMsg)
 	am := afterErr.(Model)
 	if !am.settings.Visible() {
 		t.Fatal("settings overlay should be re-opened on save error")
 	}
-	if am.settings.Draft().Theme != config.ThemeNord {
-		t.Fatal("draft should preserve user's pending theme change")
+	if am.settings.Draft().AutoRefreshSeconds != 30 {
+		t.Fatal("draft should preserve user's pending change")
 	}
 	if toastCmd == nil {
 		t.Fatal("save error handler must return a toast cmd")
@@ -1576,6 +1612,27 @@ func TestSettingsSaveErrorReopensOverlay(t *testing.T) {
 	if tm.Level != ToastError {
 		t.Fatalf("toast level = %v, want ToastError", tm.Level)
 	}
+}
+
+// containsQuit reports whether msg is tea.QuitMsg or a tea.BatchMsg
+// that resolves to one when its cmds are executed.
+func containsQuit(msg tea.Msg) bool {
+	if _, ok := msg.(tea.QuitMsg); ok {
+		return true
+	}
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		return false
+	}
+	for _, c := range batch {
+		if c == nil {
+			continue
+		}
+		if _, ok := c().(tea.QuitMsg); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // TestSettingsAppliedDropsAllEpicTypes verifies that deleting every epic

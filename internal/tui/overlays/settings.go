@@ -51,6 +51,13 @@ func themeChoices() []string {
 		config.ThemeGruvbox,
 		config.ThemeNord,
 		config.ThemeRosePine,
+		config.ThemeDracula,
+		config.ThemeSolarizedDark,
+		config.ThemeSolarizedLight,
+		config.ThemeEverforest,
+		config.ThemeKanagawa,
+		config.ThemeMonokai,
+		config.ThemeOneDark,
 	}
 	sort.Strings(out)
 	return out

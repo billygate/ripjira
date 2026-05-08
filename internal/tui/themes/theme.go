@@ -45,6 +45,13 @@ var registry = map[string]func() Palette{
 	"gruvbox":          func() Palette { return Gruvbox() },
 	"nord":             func() Palette { return Nord() },
 	"rosepine":         func() Palette { return RosePine() },
+	"dracula":          func() Palette { return Dracula() },
+	"solarized-dark":   func() Palette { return SolarizedDark() },
+	"solarized-light":  func() Palette { return SolarizedLight() },
+	"everforest":       func() Palette { return Everforest() },
+	"kanagawa":         func() Palette { return Kanagawa() },
+	"monokai":          func() Palette { return Monokai() },
+	"onedark":          func() Palette { return OneDark() },
 }
 
 // ByName returns the registered palette with the given name. Lookup is

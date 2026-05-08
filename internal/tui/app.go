@@ -182,7 +182,19 @@ type Model struct {
 	// Loaded once at startup; written via state.Mutate after every
 	// successful create.
 	lastProject string
+
+	// restartRequested is set by handleSettingsApplied when the user
+	// changed the theme. The cmd entry point reads it from the final
+	// model after prog.Run() returns and re-execs the binary; live
+	// theme swap leaves rendering artifacts on some terminals.
+	restartRequested bool
 }
+
+// RestartRequested reports whether the TUI exited with a request to
+// re-launch ripjira (currently only used after a theme change). The
+// entry point reads this from the final tea.Model returned by
+// prog.Run().
+func (m Model) RestartRequested() bool { return m.restartRequested }
 
 // chromeHeightCache memoises the per-frame heights of the three single-line
 // chrome bars. Toast height stays out — it's volatile (TTL-based) and cheap

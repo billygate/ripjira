@@ -25,7 +25,9 @@ leaving your terminal.
   graceful fallback elsewhere
 - Disk cache so the first frame paints instantly on launch
   (My Issues only — Watching/Search results are runtime-only)
-- Five built-in themes: Tokyo Night, Catppuccin, Gruvbox, Nord, Rosé Pine
+- Twelve built-in themes: Tokyo Night, Catppuccin, Gruvbox, Nord, Rosé
+  Pine, Dracula, Solarized (dark + light), Everforest, Kanagawa,
+  Monokai, One Dark
 - First-run wizard that probes `/myself` before saving credentials
 
 ## Install
@@ -172,9 +174,19 @@ Set `theme:` in `~/.config/ripjira/config.yaml` to any of:
 - `gruvbox`
 - `nord`
 - `rosepine`
+- `dracula`
+- `solarized-dark`
+- `solarized-light` (only light palette)
+- `everforest`
+- `kanagawa`
+- `monokai`
+- `onedark`
 
-Themes are resolved at startup; restart `ripjira` after editing the
-config.
+You can also change the theme without editing YAML — the in-app
+Settings overlay (`,`) cycles through every registered theme. ripjira
+re-launches itself after a theme change so the new colors paint from a
+clean alt-screen (the live swap leaves rendering artifacts on some
+terminals).
 
 ## Configuration reference
 

@@ -44,13 +44,15 @@ func TestSettingsCycleTheme(t *testing.T) {
 	if o.Draft().Theme == start {
 		t.Fatal("right arrow on Theme row did not change value")
 	}
-	for i := 0; i < 10; i++ {
+	// Iterate generously past the current count of registered palettes so
+	// adding a new theme doesn't silently make this test stale.
+	for i := 0; i < 64; i++ {
 		o, _ = o.Update(keyType(tea.KeyRight))
 		if o.Draft().Theme == start {
 			return
 		}
 	}
-	t.Fatal("Theme cycling did not wrap back to start within 10 steps")
+	t.Fatal("Theme cycling did not wrap back to start within 64 steps")
 }
 
 func TestSettingsCycleIcons(t *testing.T) {

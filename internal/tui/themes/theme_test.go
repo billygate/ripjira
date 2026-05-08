@@ -4,7 +4,20 @@ import (
 	"testing"
 )
 
-var allPalettes = []string{"tokyonight", "catppuccin-mocha", "gruvbox", "nord", "rosepine"}
+var allPalettes = []string{
+	"tokyonight",
+	"catppuccin-mocha",
+	"gruvbox",
+	"nord",
+	"rosepine",
+	"dracula",
+	"solarized-dark",
+	"solarized-light",
+	"everforest",
+	"kanagawa",
+	"monokai",
+	"onedark",
+}
 
 func TestByName_All(t *testing.T) {
 	for _, name := range allPalettes {

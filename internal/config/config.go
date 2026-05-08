@@ -49,6 +49,13 @@ const (
 	ThemeGruvbox         = "gruvbox"
 	ThemeNord            = "nord"
 	ThemeRosePine        = "rosepine"
+	ThemeDracula         = "dracula"
+	ThemeSolarizedDark   = "solarized-dark"
+	ThemeSolarizedLight  = "solarized-light"
+	ThemeEverforest      = "everforest"
+	ThemeKanagawa        = "kanagawa"
+	ThemeMonokai         = "monokai"
+	ThemeOneDark         = "onedark"
 
 	IconsUnicode = "unicode"
 	IconsASCII   = "ascii"
@@ -68,6 +75,13 @@ var (
 		ThemeGruvbox:         true,
 		ThemeNord:            true,
 		ThemeRosePine:        true,
+		ThemeDracula:         true,
+		ThemeSolarizedDark:   true,
+		ThemeSolarizedLight:  true,
+		ThemeEverforest:      true,
+		ThemeKanagawa:        true,
+		ThemeMonokai:         true,
+		ThemeOneDark:         true,
 	}
 	validIcons = map[string]bool{IconsUnicode: true, IconsASCII: true}
 
