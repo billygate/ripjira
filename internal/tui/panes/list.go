@@ -808,6 +808,15 @@ func (m *List) rebuild() {
 		}
 		m.groups = sectionGroups
 		m.list.SetItems(items)
+		// Re-run updatePagination via SetSize: the first updatePagination
+		// triggered by SetItems uses the *previous* TotalPages to compute
+		// paginationView height, so PerPage ends up one row too generous
+		// when pagination becomes visible (TotalPages: 1 → >1 transition).
+		// A second SetSize sees the new TotalPages, accounts for the
+		// pagination row's MarginTop(1), and produces a View() that fits
+		// exactly within m.height. Without this, the pane overflows by
+		// one row and bubbletea drops the topmost chrome row.
+		m.list.SetSize(m.width, m.height)
 	} else {
 		src := m.applyLocalFilter(m.issues)
 		m.groups = m.strategy.Group(src)
@@ -840,6 +849,15 @@ func (m *List) rebuild() {
 			}
 		}
 		m.list.SetItems(items)
+		// Re-run updatePagination via SetSize: the first updatePagination
+		// triggered by SetItems uses the *previous* TotalPages to compute
+		// paginationView height, so PerPage ends up one row too generous
+		// when pagination becomes visible (TotalPages: 1 → >1 transition).
+		// A second SetSize sees the new TotalPages, accounts for the
+		// pagination row's MarginTop(1), and produces a View() that fits
+		// exactly within m.height. Without this, the pane overflows by
+		// one row and bubbletea drops the topmost chrome row.
+		m.list.SetSize(m.width, m.height)
 	}
 
 	if prevSelKey != "" || prevSelGroup != "" {

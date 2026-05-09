@@ -24,7 +24,6 @@ func (m Model) View() string {
 	topBar := m.renderTopBar()
 	tabBar := m.renderTabBar()
 	hintBar := m.renderHintBar()
-	toasts := m.toasts.View(m.styles)
 
 	listW, detailW, previewW, contentHeight := m.paneDims()
 	var body string
@@ -41,14 +40,19 @@ func (m Model) View() string {
 	}
 
 	parts := []string{topBar, tabBar, body}
-	if toasts != "" {
-		parts = append(parts, toasts)
-	}
 	if m.editorInstallPrompt {
 		parts = append(parts, m.renderInstallPrompt())
 	}
 	parts = append(parts, hintBar)
 	frame := lipgloss.JoinVertical(lipgloss.Left, parts...)
+
+	// Toasts float as a top-centre overlay rather than taking a row in the
+	// vertical layout. Inlining them used to grow the frame past m.height
+	// when one fired, which made bubbletea drop the topmost row (the
+	// program-name + tab strip) until the toast TTL expired.
+	if toast := m.toasts.View(m.styles); toast != "" {
+		frame = overlayTopCenter(frame, toast, m.chromeHeights.topBar+m.chromeHeights.tabBar)
+	}
 
 	if v := m.activeOverlay(); v != "" {
 		frame = overlayCenter(frame, v)
@@ -247,6 +251,23 @@ func overlayCenter(bg, fg string) string {
 	return overlayCompose(bg, fg, x, y)
 }
 
+// overlayTopCenter places fg horizontally centred on bg at vertical offset y.
+// Used for transient toasts so they don't take a row in the vertical layout
+// (which would push the frame past m.height and trigger bubbletea's
+// drop-from-top fallback, hiding the program-name + tab strip).
+func overlayTopCenter(bg, fg string, y int) string {
+	bgW := lipgloss.Width(bg)
+	fgW := lipgloss.Width(fg)
+	x := (bgW - fgW) / 2
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	return overlayCompose(bg, fg, x, y)
+}
+
 // overlayCompose splices fg onto bg starting at cell coordinate (x, y). For
 // each row covered by fg the underlying bg row is cut at startX and endX;
 // the gap between is replaced verbatim by the corresponding fg line. Lines
@@ -283,9 +304,6 @@ func (m *Model) paneDims() (listW, detailW, previewW, contentHeight int) {
 		m.chromeHeights.valid = true
 	}
 	overhead := m.chromeHeights.topBar + m.chromeHeights.tabBar + m.chromeHeights.hintBar
-	if v := m.toasts.View(m.styles); v != "" {
-		overhead += lipgloss.Height(v)
-	}
 	contentHeight = max(m.height-overhead, 3)
 	if m.preview.Active {
 		listW = 0
@@ -403,7 +421,12 @@ func (m Model) renderListPane(w, h int) string {
 		body = m.styles.Muted.Render("Loading…")
 	}
 	content := title + "\n" + body
-	return border.Width(max(w-2, 1)).Height(max(h-2, 1)).Render(content)
+	// MaxHeight clamps overflow: bubbles/list's pagination feedback loop
+	// can yield a View() one row taller than its configured height when
+	// items > PerPage. Without the clamp the pane grows past h rows, the
+	// frame exceeds m.height, and bubbletea drops the topmost row of
+	// chrome (program-name + tab strip).
+	return border.Width(max(w-2, 1)).Height(max(h-2, 1)).MaxHeight(max(h, 1)).Render(content)
 }
 
 func (m Model) renderDetailPane(w, h int) string {
@@ -414,7 +437,7 @@ func (m Model) renderDetailPane(w, h int) string {
 	title := m.styles.PaneTitle.Render("Details")
 	body := m.detail.View()
 	content := title + "\n" + body
-	return border.Width(max(w-2, 1)).Height(max(h-2, 1)).Render(content)
+	return border.Width(max(w-2, 1)).Height(max(h-2, 1)).MaxHeight(max(h, 1)).Render(content)
 }
 
 // renderPreviewPane draws the third pane that holds the inline image
