@@ -261,6 +261,7 @@ func (m Model) handleViewSelected(v panes.ViewKind) (tea.Model, tea.Cmd) {
 	if v != panes.ViewSearch {
 		m.searchQuery = ""
 	}
+	m.focus = FocusList
 	m.view = v
 	m.lastSubView[panes.TopGroup(v)] = v
 	m.persistLastSubView(panes.TopGroup(v), v)
@@ -294,7 +295,6 @@ func (m Model) handleViewSelected(v panes.ViewKind) (tea.Model, tea.Cmd) {
 	case panes.ViewSearch:
 		if m.searchQuery == "" {
 			m.list.SetSearchEditing("")
-			m.focus = FocusList
 			return m, nil
 		}
 		m.list.SetSearchCollapsed(m.searchQuery)

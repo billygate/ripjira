@@ -747,6 +747,22 @@ func TestStrategy_ReappliedOnReturnToMyTasks(t *testing.T) {
 	}
 }
 
+func TestTabs_SwitchingViewReturnsFocusToList(t *testing.T) {
+	m := newTestModel(t)
+	m.focus = FocusDetail
+	mi, _ := m.handleViewSelected(panes.ViewWatching)
+	m = mi.(Model)
+	if m.focus != FocusList {
+		t.Fatalf("after view switch focus = %v, want FocusList", m.focus)
+	}
+	m.focus = FocusDetail
+	mi, _ = m.handleViewSelected(panes.ViewMyTasks)
+	m = mi.(Model)
+	if m.focus != FocusList {
+		t.Fatalf("after second view switch focus = %v, want FocusList", m.focus)
+	}
+}
+
 func TestStrategy_OtherViewsKeepByStatusByDefault(t *testing.T) {
 	m := newTestModel(t)
 	mi, _ := m.handleViewSelected(panes.ViewWatching)
