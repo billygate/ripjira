@@ -264,7 +264,7 @@ func (k Keymap) ShortHelp() []key.Binding {
 func (k Keymap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.CycleFocusForward, k.CycleFocusBackward, k.NextTab, k.PrevTab, k.FocusLeft, k.FocusRight, k.Top, k.Bottom, k.ToggleGroup, k.OpenSearch, k.OpenOptions},
-		{k.Open, k.Status, k.Assign, k.Comment, k.New, k.NewSubtask, k.Browser, k.CopyKey, k.CopyURL, k.Refresh, k.EditExternal},
+		{k.Open, k.Status, k.Assign, k.Comment, k.New, k.NewSubtask, k.Browser, k.CopyKey, k.CopyURL, k.Refresh, k.EditExternal, k.Watch, k.Unwatch},
 		{k.OpenTopGo, k.OpenStructures, k.EditStructures, k.NextSubView, k.PrevSubView},
 		{k.Settings, k.Help, k.CloseOverlay, k.Quit},
 	}
@@ -290,5 +290,6 @@ func (k Keymap) All() []key.Binding {
 		k.Refresh, k.OpenSearch, k.OpenOptions, k.Settings, k.Help, k.CloseOverlay, k.Quit,
 		k.OpenTopGo, k.OpenStructures, k.EditStructures, k.NextSubView, k.PrevSubView,
 		k.EditExternal,
+		k.Watch, k.Unwatch,
 	}
 }
