@@ -1842,3 +1842,72 @@ func TestEditorClosed_CancelledIsSilent(t *testing.T) {
 		t.Errorf("cancel must not call loader")
 	}
 }
+
+func TestUpdate_OpensGotoOverlay(t *testing.T) {
+	m := newTestModel(t)
+	m, _ = sendSize(m, 80, 24)
+	mi, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	got, ok := mi.(Model)
+	if !ok {
+		t.Fatalf("Update returned %T, want Model", mi)
+	}
+	if !got.gotoOverlay.Visible() {
+		t.Fatal("o on main view should open Goto overlay")
+	}
+}
+
+func TestUpdate_GoToIssueMsgSwitchesToRecentAndQueuesSelection(t *testing.T) {
+	m := newTestModel(t)
+	m, _ = sendSize(m, 80, 24)
+	mi, _ := m.Update(overlays.GoToIssueMsg{Key: "PROJ-9"})
+	got, ok := mi.(Model)
+	if !ok {
+		t.Fatalf("Update returned %T, want Model", mi)
+	}
+	if got.view != panes.ViewRecent {
+		t.Errorf("view = %v, want ViewRecent", got.view)
+	}
+	if got.pendingSelectKey != "PROJ-9" {
+		t.Errorf("pendingSelectKey = %q, want PROJ-9", got.pendingSelectKey)
+	}
+	if len(got.recentKeys) == 0 || got.recentKeys[0] != "PROJ-9" {
+		t.Errorf("recentKeys head = %v, want PROJ-9 at front", got.recentKeys)
+	}
+}
+
+func TestUpdate_CreatedOpenInAppMsgOpensIssue(t *testing.T) {
+	m := newTestModel(t)
+	m, _ = sendSize(m, 80, 24)
+	mi, _ := m.Update(overlays.CreatedOpenInAppMsg{Key: "PROJ-7"})
+	got, ok := mi.(Model)
+	if !ok {
+		t.Fatalf("Update returned %T, want Model", mi)
+	}
+	if got.view != panes.ViewRecent {
+		t.Errorf("view = %v, want ViewRecent", got.view)
+	}
+	if got.pendingSelectKey != "PROJ-7" {
+		t.Errorf("pendingSelectKey = %q, want PROJ-7", got.pendingSelectKey)
+	}
+	if len(got.recentKeys) == 0 || got.recentKeys[0] != "PROJ-7" {
+		t.Errorf("recentKeys head = %v, want PROJ-7 at front", got.recentKeys)
+	}
+}
+
+func TestUpdate_GoToInvalidMsgEmitsToast(t *testing.T) {
+	m := newTestModel(t)
+	_, cmd := m.Update(overlays.GoToInvalidMsg{Input: "junk"})
+	if cmd == nil {
+		t.Fatal("expected toast cmd")
+	}
+	out, ok := cmd().(ToastMsg)
+	if !ok {
+		t.Fatalf("expected ToastMsg, got %T", cmd())
+	}
+	if out.Level != ToastError {
+		t.Errorf("toast level = %v, want ToastError", out.Level)
+	}
+	if !strings.Contains(out.Text, "junk") {
+		t.Errorf("toast text %q does not contain input", out.Text)
+	}
+}
