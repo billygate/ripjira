@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -65,6 +66,11 @@ type userDropdown struct {
 	token     int
 }
 
+// optionPickerVisibleRows is the height of the scroll window in the popup
+// option picker rendered for Option/MultiOption fields when the user
+// activates them. Picked to match the project picker on Step 1.
+const optionPickerVisibleRows = 8
+
 // Field is a single createmeta field paired with widget state. Fields are
 // values, copied on Update like other Bubble Tea sub-models in this package.
 // The Kind field selects which of text/area/cursor/selected is meaningful;
@@ -82,6 +88,15 @@ type Field struct {
 	// the visible textinput shows displayName. Zero means no committed pick.
 	accountID string
 	dropdown  userDropdown
+
+	// Option/MultiOption popup picker state. Inline rows would explode the
+	// wizard height for fields with many allowed values (Quarter etc.), so
+	// the field collapses to a one-line summary and only renders the full
+	// list while pickerOpen is true.
+	pickerOpen   bool
+	pickerCursor int
+	pickerScroll int
+	pickerFilter textinput.Model
 
 	// body holds the markdown body for FieldKindExternalADF, populated by
 	// the external editor flow. Always empty for other kinds.
@@ -121,6 +136,14 @@ func newField(meta jira.FieldMeta, kind FieldKind) Field {
 		f.selected = map[string]bool{}
 	case FieldKindExternalADF:
 		// no embedded widget; body is plain string
+	}
+	if kind == FieldKindOption || kind == FieldKindMultiOption {
+		pf := textinput.New()
+		pf.Prompt = "› "
+		pf.Placeholder = "filter…"
+		pf.CharLimit = 64
+		pf.Width = 32
+		f.pickerFilter = pf
 	}
 	return f
 }
@@ -169,7 +192,9 @@ func (f Field) Focus() (Field, tea.Cmd) {
 	return f, nil
 }
 
-// Blur drops the focused state.
+// Blur drops the focused state. If the option-picker popup was open, it is
+// closed too — focus moving away has the same semantic as cancelling the
+// picker.
 func (f Field) Blur() Field {
 	f.focused = false
 	switch f.Kind {
@@ -177,6 +202,9 @@ func (f Field) Blur() Field {
 		f.text.Blur()
 	case FieldKindADF:
 		f.area.Blur()
+	}
+	if f.pickerOpen {
+		f = f.closePicker()
 	}
 	return f
 }
@@ -264,46 +292,18 @@ func (f Field) Update(msg tea.Msg) (Field, tea.Cmd) {
 		var cmd tea.Cmd
 		f.area, cmd = f.area.Update(msg)
 		return f, cmd
-	case FieldKindOption:
+	case FieldKindOption, FieldKindMultiOption:
 		k, ok := msg.(tea.KeyMsg)
 		if !ok {
 			return f, nil
 		}
-		switch k.String() {
-		case "up", "ctrl+p":
-			if f.cursor > 0 {
-				f.cursor--
+		if !f.pickerOpen {
+			if k.String() == "enter" {
+				f = f.openPicker()
 			}
-		case "down", "ctrl+n":
-			if f.cursor < len(f.Meta.AllowedValues)-1 {
-				f.cursor++
-			}
-		}
-		return f, nil
-	case FieldKindMultiOption:
-		k, ok := msg.(tea.KeyMsg)
-		if !ok {
 			return f, nil
 		}
-		switch k.String() {
-		case "up", "ctrl+p":
-			if f.cursor > 0 {
-				f.cursor--
-			}
-		case "down", "ctrl+n":
-			if f.cursor < len(f.Meta.AllowedValues)-1 {
-				f.cursor++
-			}
-		case " ", "space", "x":
-			if f.cursor >= 0 && f.cursor < len(f.Meta.AllowedValues) {
-				id := f.Meta.AllowedValues[f.cursor].ID
-				if f.selected == nil {
-					f.selected = map[string]bool{}
-				}
-				f.selected[id] = !f.selected[id]
-			}
-		}
-		return f, nil
+		return f.updatePicker(k), nil
 	case FieldKindExternalADF:
 		k, ok := msg.(tea.KeyMsg)
 		if !ok {
@@ -379,38 +379,256 @@ func (f Field) viewControl(s styles.Styles) string {
 	case FieldKindExternalADF:
 		return externalADFPreview(f.body)
 	case FieldKindOption:
-		return f.viewOptions(s, false)
+		return f.viewOptionCompact(s, false)
 	case FieldKindMultiOption:
-		return f.viewOptions(s, true)
+		return f.viewOptionCompact(s, true)
 	}
 	return ""
 }
 
-func (f Field) viewOptions(s styles.Styles, multi bool) string {
+// viewOptionCompact renders a single-line summary of the current selection.
+// The full list lives in the popup picker (see PickerView) so the wizard
+// height stays bounded for fields with many allowedValues.
+func (f Field) viewOptionCompact(s styles.Styles, multi bool) string {
 	if len(f.Meta.AllowedValues) == 0 {
 		return s.Muted.Render("(no options)")
 	}
-	rows := make([]string, 0, len(f.Meta.AllowedValues))
-	for i, opt := range f.Meta.AllowedValues {
-		var marker string
-		switch {
-		case multi && f.selected[opt.ID]:
-			marker = "[x] "
-		case multi:
-			marker = "[ ] "
-		case i == f.cursor:
-			marker = "● "
-		default:
-			marker = "○ "
+	var summary string
+	switch {
+	case !multi:
+		if f.cursor >= 0 && f.cursor < len(f.Meta.AllowedValues) {
+			summary = "● " + f.Meta.AllowedValues[f.cursor].Name
 		}
-		label := marker + opt.Name
-		if i == f.cursor && f.focused {
-			rows = append(rows, s.ListItemSelected.Render(label))
-		} else {
-			rows = append(rows, s.ListItem.Render(label))
+	default:
+		names := make([]string, 0, len(f.selected))
+		for _, opt := range f.Meta.AllowedValues {
+			if f.selected[opt.ID] {
+				names = append(names, opt.Name)
+			}
+		}
+		if len(names) > 0 {
+			summary = "[" + strconv.Itoa(len(names)) + "] " + strings.Join(names, ", ")
 		}
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+	if f.focused {
+		hint := s.Muted.Render("· enter to pick")
+		if summary == "" {
+			return hint
+		}
+		return s.ListItemSelected.Render(summary) + " " + hint
+	}
+	if summary == "" {
+		return ""
+	}
+	return s.ListItem.Render(summary)
+}
+
+// openPicker returns f with the popup picker activated. The picker filter is
+// reset, the cursor is seeded from the current selection (single) or the
+// first row (multi), and the filter input is focused so typing filters.
+func (f Field) openPicker() Field {
+	f.pickerOpen = true
+	f.pickerFilter.Reset()
+	f.pickerFilter.Focus() //nolint:errcheck
+	switch f.Kind {
+	case FieldKindOption:
+		f.pickerCursor = f.cursor
+	case FieldKindMultiOption:
+		f.pickerCursor = 0
+	}
+	f.pickerScroll = 0
+	f.clampPickerScroll(len(f.filteredAllowed()))
+	return f
+}
+
+// closePicker hides the popup. For single-option fields, the picker's
+// committed cursor is folded into f.cursor on enter (see updatePicker); esc
+// reverts to the previously committed value.
+func (f Field) closePicker() Field {
+	f.pickerOpen = false
+	f.pickerFilter.Blur()
+	f.pickerFilter.Reset()
+	f.pickerCursor = 0
+	f.pickerScroll = 0
+	return f
+}
+
+// PickerOpen reports whether the option/multi-option popup is currently
+// shown for this field. Always false for other kinds.
+func (f Field) PickerOpen() bool { return f.pickerOpen }
+
+// filteredAllowed returns the AllowedValues whose Name matches the current
+// picker filter (case-insensitive substring). Returns the full slice when
+// the filter is empty.
+func (f Field) filteredAllowed() []jira.FieldOption {
+	q := strings.TrimSpace(f.pickerFilter.Value())
+	if q == "" {
+		return f.Meta.AllowedValues
+	}
+	needle := strings.ToLower(q)
+	out := make([]jira.FieldOption, 0, len(f.Meta.AllowedValues))
+	for _, opt := range f.Meta.AllowedValues {
+		if strings.Contains(strings.ToLower(opt.Name), needle) {
+			out = append(out, opt)
+		}
+	}
+	return out
+}
+
+// updatePicker handles a keystroke while the popup is open. Up/Down move
+// the picker cursor; Space toggles selection for multi-option; Enter commits
+// (single) or closes (multi); Esc closes without changing the committed
+// selection. All other keys are forwarded to the filter input.
+func (f Field) updatePicker(k tea.KeyMsg) Field {
+	switch k.String() {
+	case "esc":
+		return f.closePicker()
+	case "up", "ctrl+p":
+		if f.pickerCursor > 0 {
+			f.pickerCursor--
+		}
+		f.clampPickerScroll(len(f.filteredAllowed()))
+		return f
+	case "down", "ctrl+n":
+		if f.pickerCursor < len(f.filteredAllowed())-1 {
+			f.pickerCursor++
+		}
+		f.clampPickerScroll(len(f.filteredAllowed()))
+		return f
+	case "enter":
+		filtered := f.filteredAllowed()
+		if len(filtered) == 0 {
+			return f
+		}
+		if f.pickerCursor >= len(filtered) {
+			f.pickerCursor = len(filtered) - 1
+		}
+		opt := filtered[f.pickerCursor]
+		if f.Kind == FieldKindOption {
+			for i, o := range f.Meta.AllowedValues {
+				if o.ID == opt.ID {
+					f.cursor = i
+					break
+				}
+			}
+			return f.closePicker()
+		}
+		// Multi: enter toggles the current row and stays open so the user
+		// can pick several without re-opening; a second close (esc) commits.
+		if f.selected == nil {
+			f.selected = map[string]bool{}
+		}
+		f.selected[opt.ID] = !f.selected[opt.ID]
+		return f
+	case " ", "space":
+		if f.Kind != FieldKindMultiOption {
+			return f
+		}
+		filtered := f.filteredAllowed()
+		if len(filtered) == 0 || f.pickerCursor >= len(filtered) {
+			return f
+		}
+		id := filtered[f.pickerCursor].ID
+		if f.selected == nil {
+			f.selected = map[string]bool{}
+		}
+		f.selected[id] = !f.selected[id]
+		return f
+	}
+	old := f.pickerFilter.Value()
+	f.pickerFilter, _ = f.pickerFilter.Update(k)
+	if f.pickerFilter.Value() != old {
+		f.pickerCursor = 0
+		f.pickerScroll = 0
+	}
+	return f
+}
+
+// clampPickerScroll keeps pickerScroll so pickerCursor stays inside an
+// optionPickerVisibleRows-row window over the filtered list. Called after
+// every cursor or filter mutation.
+func (f *Field) clampPickerScroll(n int) {
+	if n == 0 {
+		f.pickerScroll = 0
+		return
+	}
+	if f.pickerScroll < 0 {
+		f.pickerScroll = 0
+	}
+	maxScroll := n - optionPickerVisibleRows
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if f.pickerScroll > maxScroll {
+		f.pickerScroll = maxScroll
+	}
+	if f.pickerCursor < f.pickerScroll {
+		f.pickerScroll = f.pickerCursor
+	}
+	if f.pickerCursor >= f.pickerScroll+optionPickerVisibleRows {
+		f.pickerScroll = f.pickerCursor - optionPickerVisibleRows + 1
+	}
+}
+
+// PickerView renders the popup picker box for the focused option/multi-
+// option field. Returns "" when no picker is open. The caller composes the
+// returned string over the wizard view (see Create.viewFieldsStep).
+func (f Field) PickerView(s styles.Styles) string {
+	if !f.pickerOpen {
+		return ""
+	}
+	multi := f.Kind == FieldKindMultiOption
+	title := f.Meta.Name
+	if title == "" {
+		title = f.Meta.ID
+	}
+	header := s.OverlayTitle.Render(title)
+	filtered := f.filteredAllowed()
+	start := f.pickerScroll
+	end := start + optionPickerVisibleRows
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	rows := make([]string, 0, end-start+2)
+	if len(filtered) == 0 {
+		rows = append(rows, s.Muted.Render("(no matches)"))
+	} else {
+		if start > 0 {
+			rows = append(rows, s.Muted.Render("↑ "+strconv.Itoa(start)+" more"))
+		}
+		for i := start; i < end; i++ {
+			opt := filtered[i]
+			var marker string
+			switch {
+			case multi && f.selected[opt.ID]:
+				marker = "[x] "
+			case multi:
+				marker = "[ ] "
+			case f.cursor < len(f.Meta.AllowedValues) && f.Meta.AllowedValues[f.cursor].ID == opt.ID:
+				marker = "● "
+			default:
+				marker = "○ "
+			}
+			label := marker + opt.Name
+			if i == f.pickerCursor {
+				rows = append(rows, s.ListItemSelected.Render(label))
+			} else {
+				rows = append(rows, s.ListItem.Render(label))
+			}
+		}
+		if end < len(filtered) {
+			rows = append(rows, s.Muted.Render("↓ "+strconv.Itoa(len(filtered)-end)+" more"))
+		}
+	}
+	var hintText string
+	if multi {
+		hintText = "↑/↓ nav  space/enter toggle  esc done"
+	} else {
+		hintText = "↑/↓ nav  enter pick  esc cancel"
+	}
+	hint := s.Muted.Render(hintText)
+	parts := []string{header, "", f.pickerFilter.View(), "", lipgloss.JoinVertical(lipgloss.Left, rows...), "", hint}
+	return s.OverlayBorder.Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
 }
 
 // externalADFPreview returns a one-line preview of an external-ADF body
@@ -493,6 +711,17 @@ func (f *Field) SetUserSelection(u jira.User) {
 
 // UserAccountID returns the committed accountID for FieldKindUser, or "".
 func (f Field) UserAccountID() string { return f.accountID }
+
+// IsMultiSelected reports whether optionID is currently checked in a
+// multi-option field. Always false for other kinds. Exposed so callers
+// outside this package (e.g. usage trackers) can read the committed
+// selection without poking at the unexported map.
+func (f Field) IsMultiSelected(optionID string) bool {
+	if f.Kind != FieldKindMultiOption || f.selected == nil {
+		return false
+	}
+	return f.selected[optionID]
+}
 
 // OnTextChanged is called by the form Update path after the textinput value
 // mutates. Clears the stored accountID — any edit invalidates the previous
@@ -665,6 +894,24 @@ type FormDefaults struct {
 	// found in the createmeta allowedValues, the default cursor is left
 	// untouched.
 	DefaultPriorityName string
+
+	// OptionUsage carries the historic per-option usage counts for the
+	// active (project, issue-type) pair, keyed by fieldID → optionID →
+	// count. BuildForm uses it to stable-sort each Option/MultiOption
+	// field's allowed values by count desc, and to seed the cursor on
+	// single-option fields to the most-used choice. nil/empty means
+	// "no history" and the schema order is preserved.
+	OptionUsage map[string]map[string]int
+}
+
+// sortAllowedByUsage reorders opts so high-count entries come first. The
+// sort is stable; entries with the same count keep their schema-relative
+// order so the user's habit doesn't shuffle equal-priority items around
+// between sessions.
+func sortAllowedByUsage(opts []jira.FieldOption, counts map[string]int) {
+	sort.SliceStable(opts, func(i, j int) bool {
+		return counts[opts[i].ID] > counts[opts[j].ID]
+	})
 }
 
 // reorderFields pulls summary then description to the front while preserving
@@ -714,7 +961,20 @@ func BuildForm(meta jira.CreateMeta, defaults FormDefaults) Form {
 			warnings = append(warnings, label)
 			continue
 		}
-		fields = append(fields, newField(fm, kind))
+		f := newField(fm, kind)
+		if (kind == FieldKindOption || kind == FieldKindMultiOption) && len(f.Meta.AllowedValues) > 1 {
+			counts := defaults.OptionUsage[fm.ID]
+			if len(counts) > 0 {
+				sortAllowedByUsage(f.Meta.AllowedValues, counts)
+			}
+			if kind == FieldKindOption && len(counts) > 0 {
+				// Seed the cursor on the most-used option (now at index 0
+				// after the sort). Avoids forcing the user to re-pick the
+				// same thing each create.
+				f.cursor = 0
+			}
+		}
+		fields = append(fields, f)
 	}
 	fields = reorderFields(fields)
 	form := Form{Fields: fields, warnings: warnings}
@@ -795,8 +1055,12 @@ func (f Form) focusDelta(delta int) (Form, tea.Cmd) {
 
 // Update consumes a tea.Msg and routes it through the form. Tab/Shift+Tab
 // move focus between fields; everything else goes to the focused field.
+// While a focused field has an open picker popup, Tab/Shift+Tab are routed
+// to the field too so they don't accidentally leak focus out from under
+// the user's selection.
 func (f Form) Update(msg tea.Msg) (Form, tea.Cmd) {
-	if k, ok := msg.(tea.KeyMsg); ok {
+	pickerOpen := len(f.Fields) > 0 && f.Fields[f.focus].PickerOpen()
+	if k, ok := msg.(tea.KeyMsg); ok && !pickerOpen {
 		switch k.Type {
 		case tea.KeyTab:
 			return f.FocusNext()

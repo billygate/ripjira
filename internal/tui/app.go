@@ -183,6 +183,15 @@ type Model struct {
 	// successful create.
 	lastProject string
 
+	// createUsage mirrors state.CreateUsage loaded once at startup. It
+	// is consulted to sort the create-wizard pickers (project, issue
+	// type, option fields) by frequency and to seed cursors on the
+	// most-used choice. Mutated in-memory after every successful create
+	// and persisted asynchronously via state.Mutate. Held by pointer so
+	// the create overlay's lookup closure stays bound to the same
+	// underlying counters across Model copies in the tea Update loop.
+	createUsage *state.CreateUsage
+
 	// restartRequested is set by handleSettingsApplied when the user
 	// changed the theme. The cmd entry point reads it from the final
 	// model after prog.Run() returns and re-execs the binary; live
@@ -282,6 +291,10 @@ func New(p themes.Palette, opts ...Option) Model {
 			m.recentKeys = append([]string(nil), st.RecentlyViewed...)
 			m.favoritesCache = append([]state.Favorite(nil), st.Favorites...)
 			m.lastProject = st.LastProject
+			if st.CreateUsage != nil {
+				cu := *st.CreateUsage
+				m.createUsage = &cu
+			}
 			for k, v := range st.CommentDrafts {
 				m.commentDrafts[k] = v
 			}
@@ -300,6 +313,13 @@ func New(p themes.Palette, opts ...Option) Model {
 			}
 		}
 	}
+	if m.createUsage == nil {
+		m.createUsage = &state.CreateUsage{}
+	}
+	usage := m.createUsage
+	m.create = m.create.SetOptionUsageLookup(func(projectKey, issueTypeID string) map[string]map[string]int {
+		return collectOptionUsage(usage, projectKey, issueTypeID)
+	})
 	return m
 }
 
@@ -665,7 +685,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.lastProject != "" {
 			preselect = m.lastProject
 		}
-		c, cmd := m.create.Show(msg.Projects, preselect)
+		projects := append([]jira.Project(nil), msg.Projects...)
+		sortProjectsByUsage(projects, m.createUsage)
+		c, cmd := m.create.Show(projects, preselect)
 		m.create = c
 		return m, cmd
 	case createSubtaskProjectsLoadedMsg:
@@ -675,17 +697,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, toast
 		}
-		c, cmd := m.create.ShowAsSubtask(msg.Parent, msg.Projects)
+		projects := append([]jira.Project(nil), msg.Projects...)
+		sortProjectsByUsage(projects, m.createUsage)
+		c, cmd := m.create.ShowAsSubtask(msg.Parent, projects)
 		m.create = c
 		return m, cmd
 	case overlays.CreateProjectChosenMsg:
 		loader := m.loader
 		pk := msg.ProjectKey
+		usage := m.createUsage
 		return m, func() tea.Msg {
 			types, err := loader.IssueTypesForProject(context.Background(), pk)
-			return overlays.CreateIssueTypesMsg{ProjectKey: pk, IssueTypes: types, Err: err}
+			return overlays.CreateIssueTypesMsg{
+				ProjectKey:    pk,
+				IssueTypes:    types,
+				Err:           err,
+				DefaultTypeID: mostUsedIssueTypeID(usage, pk),
+			}
 		}
 	case overlays.CreateIssueTypesMsg:
+		if msg.Err == nil {
+			sortIssueTypesByUsage(msg.IssueTypes, m.createUsage, msg.ProjectKey)
+		}
 		var cmd tea.Cmd
 		m.create, cmd = m.create.Update(msg)
 		return m, cmd
@@ -733,6 +766,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case overlays.CreateSubmitDoneMsg:
 		parent := m.create.ParentKey() // capture BEFORE Update potentially resets it
 		typeName := m.create.SelectedIssueType().Name
+		// Snapshot the committed form fields before Update clears them on
+		// success — usage tracking reads option selections from this slice.
+		preSubmitFields := append([]overlays.Field(nil), m.create.FormFields()...)
 		var cmd tea.Cmd
 		m.create, cmd = m.create.Update(msg)
 		if msg.Err == nil {
@@ -752,6 +788,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					s.LastProject = pk
 				})
 			}
+			var persistUsage tea.Cmd
+			if msg.ProjectKey != "" && msg.IssueTypeID != "" {
+				recordCreateUsage(m.createUsage, msg.ProjectKey, msg.IssueTypeID, preSubmitFields)
+				snapshot := *m.createUsage
+				persistUsage = persistAsync(m.statePath, "create usage", func(s *state.State) {
+					s.CreateUsage = &snapshot
+				})
+			}
 			if msg.Issue.Key != "" && parent == "" {
 				m.list.PrependIssue(msg.Issue)
 				m.recentlyCreated = msg.Issue
@@ -762,11 +806,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.shouldOfferEpicLink(parent, typeName) {
 					m.createdPending = msg.Issue
 					m.epicPicker = m.epicPicker.Show(msg.Issue.Key, "")
-					return m, tea.Batch(cmd, refresh, persistLast, m.searchEpicsCmd(msg.Issue.Key))
+					return m, tea.Batch(cmd, refresh, persistLast, persistUsage, m.searchEpicsCmd(msg.Issue.Key))
 				}
 				m.created = m.created.Show(msg.Issue)
 			}
-			return m, tea.Batch(cmd, refresh, persistLast)
+			return m, tea.Batch(cmd, refresh, persistLast, persistUsage)
 		}
 		return m, cmd
 	case overlays.CreatedDismissedMsg:
