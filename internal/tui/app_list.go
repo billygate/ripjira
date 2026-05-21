@@ -53,6 +53,9 @@ func (m *Model) pushRecent(key string) {
 func (m Model) openIssueByKey(key string) (Model, tea.Cmd) {
 	m.pushRecent(key)
 	m.pendingSelectKey = key
+	if m.view == panes.ViewRecent {
+		return m.dispatchListRefresh()
+	}
 	updated, cmd := m.handleViewSelected(panes.ViewRecent)
 	if u, ok := updated.(Model); ok {
 		return u, cmd
@@ -351,7 +354,6 @@ func (m Model) handleListFetched(msg listFetchedMsg) (tea.Model, tea.Cmd) {
 	m.feedList(issues)
 	if m.pendingSelectKey != "" {
 		m.list.SelectByKey(m.pendingSelectKey)
-		m.selectedKey = m.pendingSelectKey
 		m.pendingSelectKey = ""
 	}
 	if m.view == panes.ViewMyTasks && m.cachePath != "" && m.accountID != "" {

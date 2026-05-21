@@ -226,10 +226,10 @@ func (m Model) activeOverlay() string {
 	if v := m.topGo.View(m.styles); v != "" {
 		return v
 	}
-	if v := m.created.View(m.styles); v != "" {
+	if v := m.gotoOverlay.View(m.styles); v != "" {
 		return v
 	}
-	if v := m.gotoOverlay.View(m.styles); v != "" {
+	if v := m.created.View(m.styles); v != "" {
 		return v
 	}
 	return ""
