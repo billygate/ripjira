@@ -92,6 +92,65 @@ func TestBuildForm_DefaultPriorityName_UnknownNoOp(t *testing.T) {
 	}
 }
 
+func TestBuildForm_OptionUsage_SortsAndSeedsCursor(t *testing.T) {
+	usage := map[string]map[string]int{
+		// priority option counts: Low used 5×, Medium 2×, High 0.
+		"priority": {"3": 5, "2": 2},
+		// components multi-option counts: api used 3×, core 0, ui 0.
+		"components": {"12": 3},
+	}
+	form := BuildForm(sampleMeta(), FormDefaults{OptionUsage: usage})
+	var prio, comp *Field
+	for i := range form.Fields {
+		switch form.Fields[i].Meta.ID {
+		case "priority":
+			prio = &form.Fields[i]
+		case "components":
+			comp = &form.Fields[i]
+		}
+	}
+	if prio == nil || comp == nil {
+		t.Fatal("expected priority + components fields after BuildForm")
+	}
+	// Priority: Low (id=3, 5 uses) → top, Medium (2, 2 uses) → next, High (1, 0) → last.
+	wantPrio := []string{"3", "2", "1"}
+	for i, want := range wantPrio {
+		if got := prio.Meta.AllowedValues[i].ID; got != want {
+			t.Errorf("priority allowedValues[%d].ID = %q, want %q (full=%v)",
+				i, got, want, prio.Meta.AllowedValues)
+		}
+	}
+	if prio.Value() != "3" {
+		t.Errorf("priority cursor should be seeded on most-used Low (id=3); Value=%q", prio.Value())
+	}
+	// Multi-option components: api (id=12) jumps to top; cursor not seeded for multi.
+	if comp.Meta.AllowedValues[0].ID != "12" {
+		t.Errorf("components first allowed should be api (id=12); got %v",
+			comp.Meta.AllowedValues)
+	}
+}
+
+func TestBuildForm_OptionUsage_NilLeavesSchemaOrder(t *testing.T) {
+	form := BuildForm(sampleMeta(), FormDefaults{})
+	var prio *Field
+	for i := range form.Fields {
+		if form.Fields[i].Meta.ID == "priority" {
+			prio = &form.Fields[i]
+			break
+		}
+	}
+	if prio == nil {
+		t.Fatal("priority field missing")
+	}
+	if prio.Meta.AllowedValues[0].ID != "1" {
+		t.Errorf("without usage, schema order should be preserved; first id = %q, want 1",
+			prio.Meta.AllowedValues[0].ID)
+	}
+	if prio.Value() != "1" {
+		t.Errorf("without usage, cursor stays on index 0; Value=%q", prio.Value())
+	}
+}
+
 func TestBuildForm_DefaultPriorityName_EmptyNoOp(t *testing.T) {
 	form := BuildForm(sampleMeta(), FormDefaults{})
 	for _, f := range form.Fields {
@@ -195,28 +254,40 @@ func TestForm_TextInputForwardsToFocusedField(t *testing.T) {
 	}
 }
 
-func TestField_OptionUpDownCyclesAllowedValues(t *testing.T) {
+func TestField_OptionPickerSelectsAndCommitsOnEnter(t *testing.T) {
 	form := BuildForm(sampleMeta(), FormDefaults{})
 	for form.Focus() != 2 { // priority
-		var c tea.Cmd
-		form, c = form.Update(tea.KeyMsg{Type: tea.KeyTab})
-		_ = c
+		form, _ = form.Update(tea.KeyMsg{Type: tea.KeyTab})
 	}
 	if form.Fields[2].Value() != "1" {
 		t.Errorf("option default value = %q, want id=1", form.Fields[2].Value())
 	}
+	// Up/Down without picker open are no-ops: the popup owns navigation.
 	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyDown})
-	if form.Fields[2].Value() != "2" {
-		t.Errorf("after down Value = %q, want 2", form.Fields[2].Value())
+	if form.Fields[2].Value() != "1" {
+		t.Errorf("down without picker should be a no-op; Value = %q", form.Fields[2].Value())
+	}
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !form.Fields[2].PickerOpen() {
+		t.Fatal("enter should open the option picker")
 	}
 	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyDown})
-	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyDown}) // clamped
-	if form.Fields[2].Value() != "3" {
-		t.Errorf("after clamped down Value = %q, want 3", form.Fields[2].Value())
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyEnter}) // commits Medium
+	if form.Fields[2].PickerOpen() {
+		t.Error("enter on single-option picker should close the popup")
 	}
-	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyUp})
 	if form.Fields[2].Value() != "2" {
-		t.Errorf("after up Value = %q, want 2", form.Fields[2].Value())
+		t.Errorf("after picker enter Value = %q, want 2 (Medium)", form.Fields[2].Value())
+	}
+	// Re-open and cancel via esc — selection should not change.
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyDown})
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if form.Fields[2].PickerOpen() {
+		t.Error("esc should close the picker")
+	}
+	if form.Fields[2].Value() != "2" {
+		t.Errorf("after picker esc Value = %q, want 2 (unchanged)", form.Fields[2].Value())
 	}
 }
 
@@ -258,21 +329,26 @@ func TestBuildForm_ReorderPreservesWhenSummaryAbsent(t *testing.T) {
 	}
 }
 
-func TestField_OptionViewMarksSelectedRegardlessOfFocus(t *testing.T) {
+func TestField_OptionCompactViewShowsSelectedRegardlessOfFocus(t *testing.T) {
 	form := BuildForm(sampleMeta(), FormDefaults{})
-	// Move cursor to priority (focused).
+	// Move cursor to priority (focused) and commit Medium via the picker.
 	for form.Focus() != 2 {
 		form, _ = form.Update(tea.KeyMsg{Type: tea.KeyTab})
 	}
-	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyDown}) // value -> "2" (Medium)
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyEnter}) // open picker
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyDown})  // cursor -> Medium
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyEnter}) // commit Medium
 
 	st := epicTestStyles()
-	focusedView := form.Fields[2].View(st)
+	focusedView := stripANSI(form.Fields[2].View(st))
 	if !strings.Contains(focusedView, "● Medium") {
-		t.Errorf("focused option view missing ● marker on Medium:\n%s", focusedView)
+		t.Errorf("focused option view missing '● Medium':\n%s", focusedView)
 	}
-	if !strings.Contains(focusedView, "○ High") || !strings.Contains(focusedView, "○ Low") {
-		t.Errorf("focused option view missing ○ on unselected rows:\n%s", focusedView)
+	// Compact view never lists non-selected options inline.
+	for _, name := range []string{"High", "Low"} {
+		if strings.Contains(focusedView, name) {
+			t.Errorf("focused compact view should not list non-selected %q:\n%s", name, focusedView)
+		}
 	}
 
 	// Tab away so priority is no longer focused.
@@ -280,9 +356,24 @@ func TestField_OptionViewMarksSelectedRegardlessOfFocus(t *testing.T) {
 	if form.Fields[2].Focused() {
 		t.Fatal("priority field should not be focused after tab")
 	}
-	unfocused := form.Fields[2].View(st)
+	unfocused := stripANSI(form.Fields[2].View(st))
 	if !strings.Contains(unfocused, "● Medium") {
 		t.Errorf("unfocused option view should still mark Medium with ●:\n%s", unfocused)
+	}
+}
+
+func TestField_OptionPickerView_ShowsOptions(t *testing.T) {
+	form := BuildForm(sampleMeta(), FormDefaults{})
+	for form.Focus() != 2 {
+		form, _ = form.Update(tea.KeyMsg{Type: tea.KeyTab})
+	}
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyEnter}) // open picker
+	st := epicTestStyles()
+	popup := stripANSI(form.Fields[2].PickerView(st))
+	for _, want := range []string{"Priority", "High", "Medium", "Low"} {
+		if !strings.Contains(popup, want) {
+			t.Errorf("picker view missing %q:\n%s", want, popup)
+		}
 	}
 }
 
@@ -291,10 +382,16 @@ func TestField_MultiOptionToggleWithSpace(t *testing.T) {
 	for form.Focus() != 4 { // components
 		form, _ = form.Update(tea.KeyMsg{Type: tea.KeyTab})
 	}
+	// Multi-option is popup-driven: enter to open, then space toggles.
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !form.Fields[4].PickerOpen() {
+		t.Fatal("enter should open the multi-option picker")
+	}
 	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyDown})
 	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyDown})
 	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	form, _ = form.Update(tea.KeyMsg{Type: tea.KeyEsc}) // close picker, keep toggles
 
 	v, ok := form.Fields[4].PayloadValue()
 	if !ok {
@@ -436,21 +533,32 @@ func TestForm_BuildPayload_ExtractsStandardFields(t *testing.T) {
 	}
 }
 
-func TestForm_View_RendersLabelsAndOptions(t *testing.T) {
+func TestForm_View_RendersLabelsAndCompactOptions(t *testing.T) {
 	form := BuildForm(sampleMeta(), FormDefaults{})
 	view := stripANSI(form.View(newStyles(t)))
+	// Labels + non-option widgets are always rendered inline.
 	for _, want := range []string{
 		"Summary", "*",
 		"Description",
-		"Priority", "High", "Medium", "Low",
+		"Priority",
 		"Assignee",
-		"Components", "core", "ui", "api",
+		"Components",
 		"Estimate",
 		"Due",
 		"Skipped unsupported fields",
 	} {
 		if !strings.Contains(view, want) {
 			t.Errorf("form view missing %q\n%s", want, view)
+		}
+	}
+	// Option/MultiOption are collapsed: the selected option shows, but
+	// non-selected values stay hidden until the popup opens.
+	if !strings.Contains(view, "● High") {
+		t.Errorf("default-selected priority should show compact ● High:\n%s", view)
+	}
+	for _, hidden := range []string{"Medium", "Low", "core", "ui", "api"} {
+		if strings.Contains(view, hidden) {
+			t.Errorf("compact form view should not list non-selected option %q:\n%s", hidden, view)
 		}
 	}
 }
@@ -511,7 +619,7 @@ func TestCreate_MetaLoadedRendersForm(t *testing.T) {
 		t.Errorf("form fields = %d, want 7", got)
 	}
 	view := stripANSI(c.View(newStyles(t)))
-	for _, want := range []string{"Step 3/3", "Summary", "Components", "core"} {
+	for _, want := range []string{"Step 3/3", "Summary", "Components"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("Step 3 view missing %q\n%s", want, view)
 		}

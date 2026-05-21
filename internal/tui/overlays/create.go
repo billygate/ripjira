@@ -23,10 +23,14 @@ type CreateProjectChosenMsg struct {
 // CreateIssueTypesMsg carries the issue types available for ProjectKey. Stale
 // messages (the user backed out of step 2 before the fetch resolved) are
 // ignored by the overlay via a simple project-key match.
+//
+// DefaultTypeID, when non-empty, overrides the built-in "Task" cursor
+// fallback so the most-used type for this project lands selected.
 type CreateIssueTypesMsg struct {
-	ProjectKey string
-	IssueTypes []jira.IssueType
-	Err        error
+	ProjectKey    string
+	IssueTypes    []jira.IssueType
+	Err           error
+	DefaultTypeID string
 }
 
 // CreateTypeChosenMsg is published when the user advances past Step 2 by
@@ -149,6 +153,13 @@ type Create struct {
 	subtaskMode          bool
 	currentUserAccountID string
 	defaultPriority      string
+
+	// optionUsageFor, when set, returns historic per-option usage counts
+	// for the (project, issueType) pair, keyed by fieldID → optionID →
+	// count. BuildForm uses these to sort each option field's allowed
+	// values and seed the cursor on single-option fields. The app layer
+	// wires this against state.CreateUsage; nil means "no usage data".
+	optionUsageFor func(projectKey, issueTypeID string) map[string]map[string]int
 }
 
 // metaCacheKey builds the key used to look up cached createmeta results.
@@ -195,6 +206,16 @@ func (c Create) SetCurrentUserAccountID(id string) Create {
 // field's cursor at its zero value (Jira's first allowedValue).
 func (c Create) SetDefaultPriority(name string) Create {
 	c.defaultPriority = name
+	return c
+}
+
+// SetOptionUsageLookup returns a copy of c with the per-(project, type)
+// option usage lookup wired. The callback is consulted whenever the
+// wizard builds the dynamic-fields form, both on a cache-hit type
+// selection and after a fresh CreateMetaLoadedMsg arrives. nil disables
+// usage-driven sorting / defaults.
+func (c Create) SetOptionUsageLookup(fn func(projectKey, issueTypeID string) map[string]map[string]int) Create {
+	c.optionUsageFor = fn
 	return c
 }
 
@@ -544,6 +565,7 @@ func (c Create) updateTypeStep(msg tea.Msg) (Create, tea.Cmd) {
 			c.form = BuildForm(meta, FormDefaults{
 				CurrentUserAccountID: c.currentUserAccountID,
 				DefaultPriorityName:  c.defaultPriority,
+				OptionUsage:          c.lookupOptionUsage(projectKey, sel.ID),
 			})
 			c.formLoading = false
 			c.formErr = nil
@@ -585,6 +607,18 @@ func (c Create) formSummaryValue() string {
 // Tab/Shift+Tab navigation works.
 func (c Create) updateFieldsStep(msg tea.Msg) (Create, tea.Cmd) {
 	k, ok := msg.(tea.KeyMsg)
+	// Esc closes an open option/multi-option picker before it can collapse
+	// the wizard. Without this short-circuit the user's escape from a popup
+	// would also throw them back to Step 2.
+	if ok && key.Matches(k, c.closeBinding) && c.formReady && !c.submitting {
+		if fi := c.form.Focus(); fi >= 0 && fi < len(c.form.Fields) {
+			if c.form.Fields[fi].PickerOpen() {
+				updated, cmd := c.form.Update(msg)
+				c.form = updated
+				return c, cmd
+			}
+		}
+	}
 	if ok && key.Matches(k, c.closeBinding) {
 		if c.submitting {
 			return c, nil
@@ -747,9 +781,19 @@ func (c Create) handleMetaLoadedMsg(m CreateMetaLoadedMsg) Create {
 	c.form = BuildForm(m.Meta, FormDefaults{
 		CurrentUserAccountID: c.currentUserAccountID,
 		DefaultPriorityName:  c.defaultPriority,
+		OptionUsage:          c.lookupOptionUsage(m.ProjectKey, m.IssueTypeID),
 	})
 	c.formReady = true
 	return c
+}
+
+// lookupOptionUsage returns historic option counts for (projectKey,
+// issueTypeID) via the registered callback, or nil if none is wired.
+func (c Create) lookupOptionUsage(projectKey, issueTypeID string) map[string]map[string]int {
+	if c.optionUsageFor == nil {
+		return nil
+	}
+	return c.optionUsageFor(projectKey, issueTypeID)
 }
 
 // HandleEditorClosed consumes the external-editor result. Stale tokens are
@@ -820,8 +864,23 @@ func (c Create) handleIssueTypesMsg(m CreateIssueTypesMsg) Create {
 	}
 	c.typesErr = nil
 	c.issueTypes = append([]jira.IssueType(nil), m.IssueTypes...)
-	c.typeCursor = indexOfIssueTypeName(c.issueTypes, defaultIssueTypeName)
+	if m.DefaultTypeID != "" {
+		c.typeCursor = indexOfIssueTypeID(c.issueTypes, m.DefaultTypeID)
+	} else {
+		c.typeCursor = indexOfIssueTypeName(c.issueTypes, defaultIssueTypeName)
+	}
 	return c
+}
+
+// indexOfIssueTypeID locates id in types and returns its index, or 0 when
+// not found. Companion to indexOfIssueTypeName for usage-driven defaults.
+func indexOfIssueTypeID(types []jira.IssueType, id string) int {
+	for i, t := range types {
+		if t.ID == id {
+			return i
+		}
+	}
+	return 0
 }
 
 // View renders the overlay. Returns "" when hidden so the caller can skip
@@ -872,7 +931,15 @@ func (c Create) viewFieldsStep(s styles.Styles) string {
 	}
 	parts = append(parts, "", hint)
 	inner := lipgloss.JoinVertical(lipgloss.Left, parts...)
-	return s.OverlayBorder.Render(inner)
+	wizard := s.OverlayBorder.Render(inner)
+	if c.formReady {
+		if fi := c.form.Focus(); fi >= 0 && fi < len(c.form.Fields) {
+			if popup := c.form.Fields[fi].PickerView(s); popup != "" {
+				return composeCenter(wizard, popup)
+			}
+		}
+	}
+	return wizard
 }
 
 func (c Create) viewProjectStep(s styles.Styles) string {

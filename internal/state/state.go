@@ -46,6 +46,102 @@ type State struct {
 	// after this feature ships. Used to gate the one-shot first-launch
 	// editor-availability tip.
 	EditorAdviceShown bool `json:"editorAdviceShown,omitempty"`
+
+	// CreateUsage tracks how often each project / issue-type / option has
+	// been chosen in the create wizard so frequently-used entries bubble
+	// to the top of pickers and become the cursor default on next open.
+	CreateUsage *CreateUsage `json:"createUsage,omitempty"`
+}
+
+// CreateUsage holds per-user usage counters for the create wizard. All
+// maps are lazily allocated by Bump; callers should treat a nil receiver
+// as "no history" (Count returns 0).
+type CreateUsage struct {
+	// Projects maps project key → use count.
+	Projects map[string]int `json:"projects,omitempty"`
+	// IssueTypes maps project key → (issue type id → use count). Issue
+	// types are project-scoped: BILLING.Task and OPS.Task accumulate
+	// independently because their meaning may differ.
+	IssueTypes map[string]map[string]int `json:"issueTypes,omitempty"`
+	// Options maps (project, type, field) composite key → (option id →
+	// use count). The composite is built by optionUsageKey so callers
+	// don't have to remember the separator shape.
+	Options map[string]map[string]int `json:"options,omitempty"`
+}
+
+// optionUsageKey builds the composite key used by CreateUsage.Options.
+// The NUL separator avoids collisions between identifier characters that
+// would otherwise look the same when concatenated naively.
+func optionUsageKey(projectKey, issueTypeID, fieldID string) string {
+	return projectKey + "\x00" + issueTypeID + "\x00" + fieldID
+}
+
+// BumpProject increments the usage counter for project. Allocates the
+// underlying map on first call.
+func (u *CreateUsage) BumpProject(key string) {
+	if u == nil || key == "" {
+		return
+	}
+	if u.Projects == nil {
+		u.Projects = map[string]int{}
+	}
+	u.Projects[key]++
+}
+
+// BumpIssueType increments the usage counter for (project, type).
+func (u *CreateUsage) BumpIssueType(projectKey, typeID string) {
+	if u == nil || projectKey == "" || typeID == "" {
+		return
+	}
+	if u.IssueTypes == nil {
+		u.IssueTypes = map[string]map[string]int{}
+	}
+	if u.IssueTypes[projectKey] == nil {
+		u.IssueTypes[projectKey] = map[string]int{}
+	}
+	u.IssueTypes[projectKey][typeID]++
+}
+
+// BumpOption increments the usage counter for one option in one field.
+func (u *CreateUsage) BumpOption(projectKey, typeID, fieldID, optionID string) {
+	if u == nil || projectKey == "" || typeID == "" || fieldID == "" || optionID == "" {
+		return
+	}
+	k := optionUsageKey(projectKey, typeID, fieldID)
+	if u.Options == nil {
+		u.Options = map[string]map[string]int{}
+	}
+	if u.Options[k] == nil {
+		u.Options[k] = map[string]int{}
+	}
+	u.Options[k][optionID]++
+}
+
+// ProjectCount returns the usage count for the given project key, or 0
+// when no history exists (including when u is nil).
+func (u *CreateUsage) ProjectCount(key string) int {
+	if u == nil {
+		return 0
+	}
+	return u.Projects[key]
+}
+
+// IssueTypeCount returns the usage count for (project, type).
+func (u *CreateUsage) IssueTypeCount(projectKey, typeID string) int {
+	if u == nil || u.IssueTypes == nil {
+		return 0
+	}
+	return u.IssueTypes[projectKey][typeID]
+}
+
+// OptionCounts returns the option-id → count map for (project, type,
+// field), or nil when no history exists. Callers should treat nil as
+// "no usage data" and not mutate the returned map.
+func (u *CreateUsage) OptionCounts(projectKey, typeID, fieldID string) map[string]int {
+	if u == nil || u.Options == nil {
+		return nil
+	}
+	return u.Options[optionUsageKey(projectKey, typeID, fieldID)]
 }
 
 // Favorite is a named JQL query the user has saved for re-use. Names are

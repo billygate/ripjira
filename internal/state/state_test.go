@@ -187,3 +187,62 @@ func TestState_EditorAdviceShownRoundTrip(t *testing.T) {
 		t.Fatalf("EditorAdviceShown not persisted")
 	}
 }
+
+func TestCreateUsage_BumpAndRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+
+	if err := state.Mutate(path, func(s *state.State) {
+		if s.CreateUsage == nil {
+			s.CreateUsage = &state.CreateUsage{}
+		}
+		s.CreateUsage.BumpProject("BILLING")
+		s.CreateUsage.BumpProject("BILLING")
+		s.CreateUsage.BumpProject("OPS")
+		s.CreateUsage.BumpIssueType("BILLING", "10001")
+		s.CreateUsage.BumpIssueType("BILLING", "10001")
+		s.CreateUsage.BumpOption("BILLING", "10001", "cf_quarter", "q4")
+		s.CreateUsage.BumpOption("BILLING", "10001", "cf_quarter", "q4")
+		s.CreateUsage.BumpOption("BILLING", "10001", "cf_quarter", "q3")
+	}); err != nil {
+		t.Fatalf("mutate: %v", err)
+	}
+
+	loaded, err := state.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if loaded.CreateUsage == nil {
+		t.Fatal("CreateUsage not persisted")
+	}
+	if got := loaded.CreateUsage.ProjectCount("BILLING"); got != 2 {
+		t.Errorf("ProjectCount(BILLING) = %d, want 2", got)
+	}
+	if got := loaded.CreateUsage.ProjectCount("OPS"); got != 1 {
+		t.Errorf("ProjectCount(OPS) = %d, want 1", got)
+	}
+	if got := loaded.CreateUsage.IssueTypeCount("BILLING", "10001"); got != 2 {
+		t.Errorf("IssueTypeCount(BILLING, 10001) = %d, want 2", got)
+	}
+	counts := loaded.CreateUsage.OptionCounts("BILLING", "10001", "cf_quarter")
+	if counts["q4"] != 2 || counts["q3"] != 1 {
+		t.Errorf("OptionCounts = %v, want q4=2 q3=1", counts)
+	}
+}
+
+func TestCreateUsage_NilReceiverSafe(t *testing.T) {
+	var u *state.CreateUsage
+	// Bumps on nil are silent no-ops.
+	u.BumpProject("X")
+	u.BumpIssueType("X", "Y")
+	u.BumpOption("X", "Y", "f", "z")
+	if got := u.ProjectCount("X"); got != 0 {
+		t.Errorf("nil ProjectCount = %d, want 0", got)
+	}
+	if got := u.IssueTypeCount("X", "Y"); got != 0 {
+		t.Errorf("nil IssueTypeCount = %d, want 0", got)
+	}
+	if got := u.OptionCounts("X", "Y", "f"); got != nil {
+		t.Errorf("nil OptionCounts = %v, want nil", got)
+	}
+}
