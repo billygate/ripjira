@@ -30,6 +30,9 @@ func TestCreated_ShowMakesVisible(t *testing.T) {
 	if !strings.Contains(v, "Created PROJ-1") {
 		t.Errorf("view missing key:\n%s", v)
 	}
+	if !strings.Contains(v, "o open") || !strings.Contains(v, "O browser") {
+		t.Errorf("view missing hint text:\n%s", v)
+	}
 }
 
 func TestCreated_YCopyKeyEmitsRequestAndStaysVisible(t *testing.T) {
@@ -116,6 +119,32 @@ func TestCreated_ShiftOEmitsBrowserAndCloses(t *testing.T) {
 	}
 	if !sawBrowser || !sawDismiss {
 		t.Errorf("O batch missing browser=%v dismiss=%v", sawBrowser, sawDismiss)
+	}
+}
+
+func TestCreated_OWithEmptyURLEmitsOpenInAppAndCloses(t *testing.T) {
+	c := newCreatedForTest()
+	c = c.Show(jira.Issue{Key: "PROJ-1"}) // no URL
+	c2, cmd := c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	if c2.Visible() {
+		t.Fatal("o must close the overlay even with empty URL")
+	}
+	msgs := drainBatch(cmd)
+	var sawOpenInApp, sawDismiss bool
+	for _, m := range msgs {
+		switch v := m.(type) {
+		case CreatedOpenInAppMsg:
+			if v.Key == "PROJ-1" {
+				sawOpenInApp = true
+			}
+		case CreatedDismissedMsg:
+			if v.Key == "PROJ-1" {
+				sawDismiss = true
+			}
+		}
+	}
+	if !sawOpenInApp || !sawDismiss {
+		t.Errorf("o (no URL) batch missing in-app=%v dismiss=%v", sawOpenInApp, sawDismiss)
 	}
 }
 
