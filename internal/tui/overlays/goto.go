@@ -28,7 +28,7 @@ type GoToInvalidMsg struct{ Input string }
 type Goto struct {
 	visible      bool
 	input        textinput.Model
-	submitBinds  key.Binding
+	submitBinding key.Binding
 	closeBinding key.Binding
 }
 
@@ -42,7 +42,7 @@ func NewGoto(submitKey, closeKey key.Binding) Goto {
 	ti.Width = 24
 	return Goto{
 		input:        ti,
-		submitBinds:  submitKey,
+		submitBinding: submitKey,
 		closeBinding: closeKey,
 	}
 }
@@ -69,7 +69,7 @@ func (g Goto) Update(msg tea.Msg) (Goto, tea.Cmd) {
 		return g, nil
 	}
 	if k, ok := msg.(tea.KeyMsg); ok {
-		if key.Matches(k, g.submitBinds) {
+		if key.Matches(k, g.submitBinding) {
 			raw := g.input.Value()
 			normalised := normaliseKey(raw)
 			if keyPattern.MatchString(normalised) {
@@ -93,7 +93,7 @@ func (g Goto) View(s styles.Styles) string {
 	}
 	title := s.OverlayTitle.Render("Go to issue")
 	hints := s.Muted.Render(
-		g.submitBinds.Help().Key + " " + g.submitBinds.Help().Desc + "    " +
+		g.submitBinding.Help().Key + " " + g.submitBinding.Help().Desc + "    " +
 			g.closeBinding.Help().Key + " " + g.closeBinding.Help().Desc,
 	)
 	body := lipgloss.JoinVertical(lipgloss.Left, title, "", g.input.View(), "", hints)

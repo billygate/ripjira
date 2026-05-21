@@ -94,12 +94,28 @@ func TestGoto_EscHidesWithoutEmitting(t *testing.T) {
 		t.Fatal("esc must hide the overlay")
 	}
 	if cmd != nil {
-		for _, m := range drainBatch(cmd) {
-			if _, ok := m.(GoToIssueMsg); ok {
-				t.Fatalf("esc must not emit GoToIssueMsg")
+		t.Fatalf("esc must not emit any cmd, got %T", cmd())
+	}
+}
+
+func TestGoto_SubmitEmptyInputEmitsInvalid(t *testing.T) {
+	g, _ := newGotoForTest().Show()
+	g2, cmd := g.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !g2.Visible() {
+		t.Fatal("empty submit must keep the overlay open")
+	}
+	if cmd == nil {
+		t.Fatal("empty submit must emit GoToInvalidMsg")
+	}
+	for _, m := range drainBatch(cmd) {
+		if v, ok := m.(GoToInvalidMsg); ok {
+			if v.Input != "" {
+				t.Errorf("Input = %q, want empty", v.Input)
 			}
+			return
 		}
 	}
+	t.Fatalf("empty submit must emit GoToInvalidMsg")
 }
 
 func TestGoto_NormalisationStripsAndUppercases(t *testing.T) {
