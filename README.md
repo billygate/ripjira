@@ -107,7 +107,8 @@ ripjira login --reset   # delete the stored token first, then re-run
 | `w`, `W`           | watch / unwatch current issue         |
 | `n`                | create a new issue                    |
 | `S`                | create a subtask of the current issue |
-| `o`                | open current issue in your browser    |
+| `o`                | open issue by key (Goto overlay)      |
+| `O`                | open current issue in your browser    |
 | `y`                | copy issue key to clipboard (OSC 52)  |
 | `Y`                | copy issue URL to clipboard (OSC 52)  |
 | `r`                | force refresh                         |
