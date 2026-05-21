@@ -25,6 +25,10 @@ type CreatedCopyRequestedMsg struct {
 // The overlay closes immediately after emitting this.
 type CreatedOpenRequestedMsg struct{ URL string }
 
+// CreatedOpenInAppMsg asks the root model to navigate to the issue inside
+// the TUI. The overlay closes immediately after emitting this.
+type CreatedOpenInAppMsg struct{ Key string }
+
 // Created is a small confirmation overlay shown after a successful issue
 // creation. It carries no domain logic; it surfaces the new key, accepts a
 // few hotkeys (copy/open/close), and emits messages for the root model.
@@ -33,20 +37,22 @@ type Created struct {
 	key     string
 	url     string
 
-	copyKey  key.Binding
-	copyURL  key.Binding
-	browser  key.Binding
-	closeKey key.Binding
+	copyKey   key.Binding
+	copyURL   key.Binding
+	openInApp key.Binding
+	browser   key.Binding
+	closeKey  key.Binding
 }
 
 // NewCreated builds a hidden Created overlay reusing the supplied key
 // bindings (no new bindings registered in the keymap).
-func NewCreated(copyKey, copyURL, browser, closeKey key.Binding) Created {
+func NewCreated(copyKey, copyURL, openInApp, browser, closeKey key.Binding) Created {
 	return Created{
-		copyKey:  copyKey,
-		copyURL:  copyURL,
-		browser:  browser,
-		closeKey: closeKey,
+		copyKey:   copyKey,
+		copyURL:   copyURL,
+		openInApp: openInApp,
+		browser:   browser,
+		closeKey:  closeKey,
 	}
 }
 
@@ -74,8 +80,8 @@ func (c Created) Hide() Created {
 }
 
 // Update handles key messages while visible. y / Y request copies (overlay
-// stays open); o opens the URL and closes; Esc / Enter close. Any other
-// key is swallowed.
+// stays open); o opens the issue in-app and closes; O opens in browser and
+// closes; Esc / Enter close. Any other key is swallowed.
 func (c Created) Update(msg tea.Msg) (Created, tea.Cmd) {
 	if !c.visible {
 		return c, nil
@@ -94,6 +100,14 @@ func (c Created) Update(msg tea.Msg) (Created, tea.Cmd) {
 		}
 		text, label := c.url, "URL"
 		return c, func() tea.Msg { return CreatedCopyRequestedMsg{Text: text, Label: label} }
+	case key.Matches(km, c.openInApp):
+		issueKey := c.key
+		dismissed := CreatedDismissedMsg{Key: c.key}
+		c.visible = false
+		return c, tea.Batch(
+			func() tea.Msg { return CreatedOpenInAppMsg{Key: issueKey} },
+			func() tea.Msg { return dismissed },
+		)
 	case key.Matches(km, c.browser):
 		if c.url == "" {
 			c.visible = false
@@ -121,7 +135,7 @@ func (c Created) View(s styles.Styles) string {
 		return ""
 	}
 	title := s.Accent.Render("Created " + c.key)
-	hints := s.Muted.Render("y copy key   Y copy URL   o open   esc/enter close")
+	hints := s.Muted.Render("y copy key   Y copy URL   o open   O browser   esc/enter close")
 	body := lipgloss.JoinVertical(lipgloss.Left, title, "", hints)
 	return s.OverlayBorder.Render(body)
 }

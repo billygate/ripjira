@@ -14,7 +14,8 @@ func newCreatedForTest() Created {
 	return NewCreated(
 		key.NewBinding(key.WithKeys("y")),
 		key.NewBinding(key.WithKeys("Y")),
-		key.NewBinding(key.WithKeys("o")),
+		key.NewBinding(key.WithKeys("o")),        // openInApp
+		key.NewBinding(key.WithKeys("O")),        // browser
 		key.NewBinding(key.WithKeys("esc")),
 	)
 }
@@ -66,24 +67,20 @@ func TestCreated_ShiftYCopyURL(t *testing.T) {
 	}
 }
 
-func TestCreated_OEmitsOpenAndCloses(t *testing.T) {
+func TestCreated_OEmitsOpenInAppAndCloses(t *testing.T) {
 	c := newCreatedForTest()
 	c = c.Show(jira.Issue{Key: "PROJ-1", URL: "https://j/PROJ-1"})
 	c2, cmd := c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
 	if c2.Visible() {
 		t.Fatal("o must close the overlay")
 	}
-	if cmd == nil {
-		t.Fatal("o must emit cmds")
-	}
-	// Batched: collect both messages.
 	msgs := drainBatch(cmd)
-	var sawOpen, sawDismiss bool
+	var sawOpenInApp, sawDismiss bool
 	for _, m := range msgs {
 		switch v := m.(type) {
-		case CreatedOpenRequestedMsg:
-			if v.URL == "https://j/PROJ-1" {
-				sawOpen = true
+		case CreatedOpenInAppMsg:
+			if v.Key == "PROJ-1" {
+				sawOpenInApp = true
 			}
 		case CreatedDismissedMsg:
 			if v.Key == "PROJ-1" {
@@ -91,8 +88,49 @@ func TestCreated_OEmitsOpenAndCloses(t *testing.T) {
 			}
 		}
 	}
-	if !sawOpen || !sawDismiss {
-		t.Errorf("o batch missing open=%v dismiss=%v", sawOpen, sawDismiss)
+	if !sawOpenInApp || !sawDismiss {
+		t.Errorf("o batch missing in-app=%v dismiss=%v", sawOpenInApp, sawDismiss)
+	}
+}
+
+func TestCreated_ShiftOEmitsBrowserAndCloses(t *testing.T) {
+	c := newCreatedForTest()
+	c = c.Show(jira.Issue{Key: "PROJ-1", URL: "https://j/PROJ-1"})
+	c2, cmd := c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("O")})
+	if c2.Visible() {
+		t.Fatal("O must close the overlay")
+	}
+	msgs := drainBatch(cmd)
+	var sawBrowser, sawDismiss bool
+	for _, m := range msgs {
+		switch v := m.(type) {
+		case CreatedOpenRequestedMsg:
+			if v.URL == "https://j/PROJ-1" {
+				sawBrowser = true
+			}
+		case CreatedDismissedMsg:
+			if v.Key == "PROJ-1" {
+				sawDismiss = true
+			}
+		}
+	}
+	if !sawBrowser || !sawDismiss {
+		t.Errorf("O batch missing browser=%v dismiss=%v", sawBrowser, sawDismiss)
+	}
+}
+
+func TestCreated_ShiftOWithEmptyURLClosesWithDismiss(t *testing.T) {
+	c := newCreatedForTest()
+	c = c.Show(jira.Issue{Key: "PROJ-1"})
+	c2, cmd := c.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("O")})
+	if c2.Visible() {
+		t.Fatal("O with empty URL must still close")
+	}
+	msgs := drainBatch(cmd)
+	for _, m := range msgs {
+		if _, ok := m.(CreatedOpenRequestedMsg); ok {
+			t.Fatalf("O must not emit open with empty URL")
+		}
 	}
 }
 
