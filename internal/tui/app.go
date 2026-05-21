@@ -78,6 +78,7 @@ type Model struct {
 	settings      overlays.Settings
 	topGo         overlays.TopGo
 	created       overlays.Created
+	gotoOverlay   overlays.Goto
 
 	// createdPending holds the freshly-created issue while the wizard is in
 	// Step 4 (link to epic). On EpicPicked / EpicCancelled it is consumed:
@@ -118,6 +119,11 @@ type Model struct {
 	// recentKeys is the bounded most-recently-viewed list (head = newest).
 	// Loaded from state.json at startup, persisted on every push.
 	recentKeys []string
+
+	// pendingSelectKey is set by openIssueByKey; consumed by
+	// handleListFetched after the Recent refresh comes back so the
+	// freshly-opened issue gets selected once it appears in the list.
+	pendingSelectKey string
 
 	// pendingDeletedLink stores the just-removed link so handleLinkDeleteDone
 	// can re-append it on failure. Cleared on each result.
@@ -247,7 +253,8 @@ func New(p themes.Palette, opts ...Option) Model {
 		scopeEditor:   overlays.NewScopeEditor(km.CloseOverlay),
 		settings:      overlays.NewSettings(km.CloseOverlay),
 		topGo:         overlays.NewTopGo(km.CloseOverlay),
-		created:       overlays.NewCreated(km.CopyKey, km.CopyURL, km.Browser, km.CloseOverlay),
+		created:       overlays.NewCreated(km.CopyKey, km.CopyURL, km.GoToIssue, km.Browser, km.CloseOverlay),
+		gotoOverlay:   overlays.NewGoto(km.Open, km.CloseOverlay),
 		list:          panes.New(st, grouping.ByStatus{}, 1, 1),
 		detail:        panes.NewDetail(st, panesNoopLoader{}, 1, 1),
 		browser:       OSOpener{},
@@ -818,6 +825,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.list.SelectByKey(msg.Key)
 		}
 		return m, m.syncDetailFromList()
+	case overlays.GoToIssueMsg:
+		updated, cmd := m.openIssueByKey(msg.Key)
+		return updated, cmd
+	case overlays.GoToInvalidMsg:
+		in := msg.Input
+		return m, func() tea.Msg {
+			return ToastMsg{Text: "invalid issue key: " + in, Level: ToastError}
+		}
+	case overlays.CreatedOpenInAppMsg:
+		updated, cmd := m.openIssueByKey(msg.Key)
+		return updated, cmd
 	case overlays.CreatedCopyRequestedMsg:
 		text, label := msg.Text, msg.Label
 		return m, func() tea.Msg {

@@ -28,7 +28,7 @@ func (m Model) canArmQuit() bool {
 		m.description.Visible() || m.priority.Visible() ||
 		m.epicPicker.Visible() || m.structPicker.Visible() || m.scopeEditor.Visible() ||
 		m.settings.Visible() || m.topGo.Visible() ||
-		m.created.Visible() {
+		m.created.Visible() || m.gotoOverlay.Visible() {
 		return false
 	}
 	if m.list.SearchEditing() || m.list.LocalFilterEditing() {
@@ -149,6 +149,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scopeEditor, cmd = m.scopeEditor.Update(msg)
 		return m, cmd
 	}
+	if m.gotoOverlay.Visible() {
+		g, cmd := m.gotoOverlay.Update(msg)
+		m.gotoOverlay = g
+		return m, cmd
+	}
 	if m.created.Visible() {
 		var cmd tea.Cmd
 		m.created, cmd = m.created.Update(msg)
@@ -219,6 +224,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openCreateOverlay()
 	case key.Matches(msg, m.keymap.NewSubtask):
 		return m.openCreateSubtaskOverlay()
+	case key.Matches(msg, m.keymap.GoToIssue):
+		g, cmd := m.gotoOverlay.Show()
+		m.gotoOverlay = g
+		return m, cmd
 	case key.Matches(msg, m.keymap.Browser):
 		return m.openInBrowser()
 	case key.Matches(msg, m.keymap.CopyKey):

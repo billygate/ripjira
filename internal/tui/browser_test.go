@@ -83,9 +83,9 @@ func TestOpenInBrowser_PressingO_InvokesOpener(t *testing.T) {
 	fake := &fakeOpener{}
 	m := newBrowserTestModel(t, fake)
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'O'}})
 	if cmd == nil {
-		t.Fatal("'o' did not produce a command")
+		t.Fatal("'O' did not produce a command")
 	}
 	msg := cmd()
 	if _, ok := msg.(browserOpenedMsg); !ok {
@@ -97,10 +97,10 @@ func TestOpenInBrowser_PressingO_InvokesOpener(t *testing.T) {
 	if fake.urls[0] != "https://example.atlassian.net/browse/PROJ-1" {
 		t.Errorf("opener received url %q, want PROJ-1 browse URL", fake.urls[0])
 	}
-	// Pressing `o` should not change focus or open any overlay.
+	// Pressing `O` should not change focus or open any overlay.
 	m2 := updated.(Model)
 	if m2.HelpVisible() || m2.TransitionVisible() || m2.CommentVisible() || m2.AssignVisible() {
-		t.Error("'o' opened an overlay; it should only invoke the opener")
+		t.Error("'O' opened an overlay; it should only invoke the opener")
 	}
 }
 
@@ -126,9 +126,9 @@ func TestOpenInBrowser_OpenerError_PushesToast(t *testing.T) {
 	fake := &fakeOpener{err: errors.New("boom")}
 	m := newBrowserTestModel(t, fake)
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'O'}})
 	if cmd == nil {
-		t.Fatal("'o' did not produce a command")
+		t.Fatal("'O' did not produce a command")
 	}
 	msg := cmd()
 	_, cmd2 := m.Update(msg)

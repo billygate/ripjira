@@ -46,6 +46,20 @@ func (m *Model) pushRecent(key string) {
 	}()
 }
 
+// openIssueByKey is the shared entry point for "navigate to this key"
+// triggered by the goto overlay and the post-create popup. It pushes
+// key to recents, switches to ViewRecent, and stashes the key in
+// pendingSelectKey so the next listFetched selects it.
+func (m Model) openIssueByKey(key string) (Model, tea.Cmd) {
+	m.pushRecent(key)
+	m.pendingSelectKey = key
+	updated, cmd := m.handleViewSelected(panes.ViewRecent)
+	if u, ok := updated.(Model); ok {
+		return u, cmd
+	}
+	return m, cmd
+}
+
 // recentJQL builds the JQL fed to the loader for ViewRecent. Returns ""
 // when the recently-viewed list is empty so the loader can short-circuit
 // without calling Search.
@@ -335,6 +349,11 @@ func (m Model) handleListFetched(msg listFetchedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.feedList(issues)
+	if m.pendingSelectKey != "" {
+		m.list.SelectByKey(m.pendingSelectKey)
+		m.selectedKey = m.pendingSelectKey
+		m.pendingSelectKey = ""
+	}
 	if m.view == panes.ViewMyTasks && m.cachePath != "" && m.accountID != "" {
 		path, account := m.cachePath, m.accountID
 		toCache := issues
