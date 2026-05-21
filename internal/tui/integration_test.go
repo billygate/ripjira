@@ -532,3 +532,74 @@ var errFetch = stubErr("network down")
 type stubErr string
 
 func (s stubErr) Error() string { return string(s) }
+
+// TestGoto_EndToEnd presses `o`, types an issue key, submits, and confirms
+// the app switches to the Recent view with the issue selected and its
+// detail panel populated.
+func TestGoto_EndToEnd(t *testing.T) {
+	loader := newStubLoader()
+	palette, err := themes.ByName("tokyonight")
+	if err != nil {
+		t.Fatalf("load tokyonight: %v", err)
+	}
+	model := tui.New(palette, tui.WithLoader(loader))
+	tm := teatest.NewTestModel(t, model, teatest.WithInitialTermSize(120, 40))
+
+	// Initial frame: the chrome should be there even before any data arrives.
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return bytes.Contains(b, []byte("Issues")) && bytes.Contains(b, []byte("Details"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Resolve the initial MyIssues fetch with an empty list so the app
+	// settles into a quiet steady state before we drive the overlay.
+	loader.listCh <- listResult{issues: nil}
+
+	// Open the Goto overlay.
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return bytes.Contains(b, []byte("Go to issue"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Type the key one rune at a time (matches how real input arrives).
+	for _, r := range "PROJ-42" {
+		tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Submit. Switches to Recent and dispatches a list refresh for `key in ("PROJ-42")`.
+	tm.Send(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Resolve the Recent-view list fetch with the requested key.
+	loader.listCh <- listResult{issues: []jira.Issue{
+		{Key: "PROJ-42", Summary: "Goto target",
+			Status:   jira.Status{Name: "To Do", Category: "new"},
+			Priority: jira.Priority{Name: "Medium"}},
+	}}
+
+	// The list loads PROJ-42, pendingSelectKey selects it, and the detail
+	// pane begins its load — wait for both signals to be on screen at once.
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return bytes.Contains(b, []byte("PROJ-42")) && bytes.Contains(b, []byte("Loading description"))
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	// Resolve the three detail loads.
+	loader.issue("PROJ-42") <- issueResult{issue: jira.Issue{
+		Key:         "PROJ-42",
+		Summary:     "Goto target",
+		Description: "Description for PROJ-42",
+		Status:      jira.Status{Name: "To Do", Category: "new"},
+		Priority:    jira.Priority{Name: "Medium"},
+	}}
+	loader.comments("PROJ-42") <- commentsResult{}
+	loader.transitions("PROJ-42") <- transitionsResult{transitions: []jira.Transition{
+		{ID: "11", Name: "Start", To: jira.Status{Name: "In Progress"}},
+	}}
+
+	// The detail pane shows the description, confirming the full happy path.
+	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
+		return strings.Contains(stripANSI(string(b)), "Description for PROJ-42")
+	}, teatest.WithDuration(2*time.Second), teatest.WithCheckInterval(20*time.Millisecond))
+
+	tm.Send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	tm.WaitFinished(t, teatest.WithFinalTimeout(2*time.Second))
+}
