@@ -14,8 +14,8 @@ func newCreatedForTest() Created {
 	return NewCreated(
 		key.NewBinding(key.WithKeys("y")),
 		key.NewBinding(key.WithKeys("Y")),
-		key.NewBinding(key.WithKeys("o")),        // openInApp
-		key.NewBinding(key.WithKeys("O")),        // browser
+		key.NewBinding(key.WithKeys("o")), // openInApp
+		key.NewBinding(key.WithKeys("O")), // browser
 		key.NewBinding(key.WithKeys("esc")),
 	)
 }

@@ -26,10 +26,10 @@ type GoToInvalidMsg struct{ Input string }
 // issue by key. It carries no network logic — it validates format,
 // normalises whitespace/case, and publishes messages.
 type Goto struct {
-	visible      bool
-	input        textinput.Model
+	visible       bool
+	input         textinput.Model
 	submitBinding key.Binding
-	closeBinding key.Binding
+	closeBinding  key.Binding
 }
 
 var keyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]+-[0-9]+$`)
@@ -41,9 +41,9 @@ func NewGoto(submitKey, closeKey key.Binding) Goto {
 	ti.CharLimit = 32
 	ti.Width = 24
 	return Goto{
-		input:        ti,
+		input:         ti,
 		submitBinding: submitKey,
-		closeBinding: closeKey,
+		closeBinding:  closeKey,
 	}
 }
 
