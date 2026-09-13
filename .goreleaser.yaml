@@ -56,15 +56,12 @@ homebrew_casks:
     directory: Casks
     homepage: "https://github.com/billygate/ripjira"
     description: "Jira CLI client with a TUI"
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr",
-              args: ["-dr", "com.apple.quarantine", "#{staged_path}/ripjira"]
-          end
-          system_command "/bin/ln",
-            args: ["-sf", "#{HOMEBREW_PREFIX}/bin/ripjira",
-                   "#{HOMEBREW_PREFIX}/bin/rj"]
-        uninstall: |
-          system_command "/bin/rm", args: ["-f", "#{HOMEBREW_PREFIX}/bin/rj"]
+    custom_block: |
+      binary "ripjira", target: "rj"
+
+      postflight_steps do
+        on_macos do
+          run "/usr/bin/xattr",
+              args: ["-dr", "com.apple.quarantine", "{{ `{{staged_path}}` }}/ripjira"]
+        end
+      end
