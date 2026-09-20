@@ -59,7 +59,7 @@ homebrew_casks:
     custom_block: |
       binary "ripjira", target: "rj"
 
-      deprecate! date: "2026-09-20", because: :discontinued
+      disable! date: "2026-09-20", because: :discontinued
 
       zap trash: [
         "~/.cache/ripjira",

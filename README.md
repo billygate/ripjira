@@ -1,7 +1,7 @@
 # ripjira
 
 > **Discontinued.** ripjira is no longer developed and the Homebrew cask is
-> deprecated; there will be no further releases. Installed copies keep
+> disabled; there will be no further releases. Installed copies keep
 > working, but nothing will be fixed. See [Uninstall](#uninstall) for how to
 > remove it completely.
 
@@ -37,16 +37,11 @@ leaving your terminal.
 
 ## Install
 
-### Homebrew
+### Homebrew (disabled)
 
-```sh
-brew tap billygate/tap
-brew install ripjira
-```
-
-This installs both `ripjira` and the short alias `rj`. The cask is
-deprecated, so `brew install` prints a warning and `brew upgrade` will
-not find newer versions.
+The `billygate/tap` cask is disabled — `brew install ripjira` fails and
+there is no supported way to install ripjira from Homebrew. Build from
+source instead.
 
 ### From source
 
