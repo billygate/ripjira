@@ -1,7 +1,6 @@
 # ripjira — Design Spec
 
 **Дата:** 2026-04-30
-**Автор:** A. Mikhaylov
 **Статус:** approved (brainstorm)
 
 ## 1. Обзор
