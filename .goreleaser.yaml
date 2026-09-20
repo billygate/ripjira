@@ -59,6 +59,14 @@ homebrew_casks:
     custom_block: |
       binary "ripjira", target: "rj"
 
+      deprecate! date: "2026-09-20", because: :discontinued
+
+      zap trash: [
+        "~/.cache/ripjira",
+        "~/.config/ripjira",
+        "~/.local/state/ripjira",
+      ]
+
       postflight_steps do
         on_macos do
           run "/usr/bin/xattr",

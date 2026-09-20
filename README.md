@@ -1,5 +1,10 @@
 # ripjira
 
+> **Discontinued.** ripjira is no longer developed and the Homebrew cask is
+> deprecated; there will be no further releases. Installed copies keep
+> working, but nothing will be fixed. See [Uninstall](#uninstall) for how to
+> remove it completely.
+
 A keyboard-first TUI client for Jira Cloud, written in Go on top of
 [Bubble Tea](https://github.com/charmbracelet/bubbletea). `ripjira`
 shows the issues currently assigned to you, lets you triage them
@@ -39,7 +44,9 @@ brew tap billygate/tap
 brew install ripjira
 ```
 
-This installs both `ripjira` and the short alias `rj`.
+This installs both `ripjira` and the short alias `rj`. The cask is
+deprecated, so `brew install` prints a warning and `brew upgrade` will
+not find newer versions.
 
 ### From source
 
@@ -233,6 +240,25 @@ restarts without you re-supplying them.
 - Unknown create-form fields are skipped with a warning rather than
   blocking submit. Required fields you cannot fill from the TUI must
   be set after creation in the web UI.
+
+## Uninstall
+
+```sh
+brew uninstall --zap ripjira
+brew untap billygate/tap
+```
+
+`--zap` also removes the config, cache, and state directories
+(`~/.config/ripjira`, `~/.cache/ripjira`, `~/.local/state/ripjira`).
+Plain `brew uninstall` leaves them behind.
+
+The API token lives in the OS keychain under the service name `ripjira`
+and is **not** removed by `--zap`. Delete it by hand — on macOS, in
+Keychain Access search for `ripjira` and delete the entry.
+
+Installed from source instead? Remove the binary (`rm $(go env
+GOPATH)/bin/ripjira`) and the three directories above, then the keychain
+entry.
 
 ## Development
 
